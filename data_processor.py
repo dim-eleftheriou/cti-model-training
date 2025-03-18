@@ -41,3 +41,6 @@ class SplittedJsonIoDataset:
         # Create a hf dataset dict
         dataset = datasets.DatasetDict({"train":hf_train, "eval":hf_eval})
         return dataset
+    
+def filter_by_token_counts(dataset, by=""):
+    return dataset
