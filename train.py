@@ -55,7 +55,7 @@ if __name__ == "__main__":
         tokenizer = tokenizer,
         train_dataset = dataset["train"],
         eval_dataset = dataset["eval"],
-        data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer),
+        data_collator = data_collator,
         dataset_text_field = "text",
         max_seq_length = config["model_loading_args"]["max_seq_length"], # Used only when packing=True for creating a ConstantLengthDataset.
         packing = config["fine_tuning_args"]["apply_packing"],
@@ -73,5 +73,5 @@ if __name__ == "__main__":
         instruction_part = config["instruction_part"],
         response_part = config["response_part"]
     )
-
+    
     trainer_stats = unsloth_train(trainer)
