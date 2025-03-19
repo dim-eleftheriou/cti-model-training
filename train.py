@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 from unsloth import FastLanguageModel
 import torch
 
