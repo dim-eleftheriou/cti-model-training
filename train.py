@@ -47,8 +47,10 @@ if __name__ == "__main__":
     )
 
     if config["fine_tuning_args"]["training_type"]=="text_completion":
+        _train_on_responses_only_bool = True
         data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
     elif config["fine_tuning_args"]["training_type"]=="continued_pre_training":
+        _train_on_responses_only_bool = False
         data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     else:
         raise Exception("Wrong Training Type. Check config.yaml")
@@ -61,7 +63,7 @@ if __name__ == "__main__":
         data_collator = data_collator,
         dataset_text_field = "text",
         max_seq_length = config["model_loading_args"]["max_seq_length"], # Used only when packing=True for creating a ConstantLengthDataset.
-        packing = config["fine_tuning_args"]["apply_packing"],
+        packing = config["sft_trainer_arguments"]["apply_packing"],
         dataset_num_proc = min(num_proc, config["sft_trainer_arguments"]["dataset_num_proc"]),
         #compute_metrics=compute_metrics,
         args = UnslothTrainingArguments(
@@ -71,10 +73,11 @@ if __name__ == "__main__":
         )
     )
 
-    trainer = train_on_responses_only(
-        trainer,
-        instruction_part = config["instruction_part"],
-        response_part = config["response_part"]
-    )
+    if _train_on_responses_only_bool:
+        trainer = train_on_responses_only(
+            trainer,
+            instruction_part = config["instruction_part"],
+            response_part = config["response_part"]
+        )
     
     trainer_stats = unsloth_train(trainer)

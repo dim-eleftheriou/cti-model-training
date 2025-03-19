@@ -42,8 +42,6 @@ fine_tuning_args:
   use_validation_dataset: True
   # Add special tokens in training. It can increase too much the GPU consumption!
   special_tokens_list: []
-  # Apply packing to dataset for fixed length. Creates a ConstantLengthDataset
-  apply_packing: False
 
 ###################
 # LoRA parameters #
@@ -77,6 +75,8 @@ sft_trainer_arguments:
   data_collator: DataCollatorForSeq2Seq
   # Select number of processes to use for processing the dataset.
   dataset_num_proc: 4
+  # Apply packing to dataset for fixed length. Creates a ConstantLengthDataset. Can decrease significantly the training time.
+  apply_packing: False # To be used only for continued pre-training, otherwise may affect a lot the accuracy of the model.
 
 ######################
 # Training Arguments #

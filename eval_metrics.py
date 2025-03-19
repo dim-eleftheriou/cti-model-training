@@ -5,7 +5,7 @@ bleu = evaluate.load("bleu")
 acc = evaluate.load("accuracy")
 rouge = evaluate.load('rouge')
 
-def compute_metrics(eval_preds):
+def compute_metrics(eval_preds, tokenizer):
     preds, labels = eval_preds
     # preds have the same shape as the labels, after the argmax(-1) has been calculated
     # by preprocess_logits_for_metrics but we need to shift the labels
