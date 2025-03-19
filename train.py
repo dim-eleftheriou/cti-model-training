@@ -62,7 +62,7 @@ if __name__ == "__main__":
         dataset_text_field = "text",
         max_seq_length = config["model_loading_args"]["max_seq_length"], # Used only when packing=True for creating a ConstantLengthDataset.
         packing = config["fine_tuning_args"]["apply_packing"],
-        dataset_num_proc = num_proc,
+        dataset_num_proc = min(num_proc, config["sft_trainer_arguments"]["dataset_num_proc"]),
         #compute_metrics=compute_metrics,
         args = UnslothTrainingArguments(
             fp16 = not is_bfloat16_supported(),

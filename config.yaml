@@ -76,7 +76,7 @@ sft_trainer_arguments:
 
   data_collator: DataCollatorForSeq2Seq
   # Select number of processes to use for processing the dataset.
-  dataset_num_proc: 1
+  dataset_num_proc: 4
 
 ######################
 # Training Arguments #
