@@ -24,6 +24,8 @@ from unsloth import unsloth_train
 
 from eval_metrics import compute_metrics
 
+from utils import save_log_history
+
 if __name__ == "__main__":
 
     with open("config.yaml", "r") as f:
@@ -81,3 +83,5 @@ if __name__ == "__main__":
         )
     
     trainer_stats = unsloth_train(trainer)
+    
+    save_log_history(trainer)
