@@ -9,7 +9,7 @@ num_proc = cpu_count()
 
 import yaml
 
-from data_processor import SplittedJsonIoDataset
+from data_processor import SplittedJsonIoDataset, filter_by_token_counts
 from customs import customize_tokenizer
 
 from unsloth import UnslothTrainer, UnslothTrainingArguments
@@ -37,10 +37,10 @@ if __name__ == "__main__":
 
     model, tokenizer = customize_tokenizer(model, tokenizer, config)
 
-    # if config["model_loading_args"]["max_seq_length"] is None:
-    #     max_seq_length = tokenizer.model_max_length
-
     dataset = SplittedJsonIoDataset(tokenizer, config["system_message"]).create()
+
+    if config["filter_dataset"]:
+        dataset = filter_by_token_counts(dataset, tokenizer, config)
 
     # Add LoRA weights
     model = FastLanguageModel.get_peft_model(

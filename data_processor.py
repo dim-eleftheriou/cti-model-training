@@ -42,5 +42,10 @@ class SplittedJsonIoDataset:
         dataset = datasets.DatasetDict({"train":hf_train, "eval":hf_eval})
         return dataset
     
-def filter_by_token_counts(dataset, by=""):
+def filter_by_token_counts(dataset, tokenizer, config):
+    if config["max_seq_length"]:
+        limit = config["max_seq_length"]
+    else:
+        limit = tokenizer.model_max_length
+    dataset = dataset.filter(lambda x: len(tokenizer.encode(x["text"])) <= limit)
     return dataset
