@@ -56,5 +56,40 @@ def save_log_history(trainer, return_history=False):
     if return_history:
         return log_df
 
+def save_model(model, tokenizer, save_args):
+    # Create a datetime stamp for logging
+    dt = datetime.datetime.now().__str__().replace(" ", "--")
+
+    if not os.path.exists(save_args["adapters_name"]):
+        os.makedirs(save_args["adapters_name"])
+    
+    os.mkdirs(os.path.join(save_args["adapters_name"], dt))
+
+    # Local saving in pt
+    model.save_pretrained(os.path.join(save_args["adapters_name"], dt, "lora_model"))
+    tokenizer.save_pretrained(os.path.join(save_args["adapters_name"], dt, "lora_model"))
+
+    # Local saving in GGUF
+    if save_args["save_to_gguf"]:
+        model.save_pretrained_gguf(
+            os.path.join(save_args["adapters_name"], dt, "lora_model"),
+            tokenizer,
+            quantization_method = save_args["quantization_method_gguf"],
+        )
+
+    # Online saving in pt
+    if save_args["push_to_hub"]:
+        model.push_to_hub(f"{save_args["online_directory"]}/{save_args["online_name"]}")
+        tokenizer.push_to_hub(f"{save_args["online_directory"]}/{save_args["online_name"]}")
+
+    # Online saving in GGUF
+    if save_args["push_to_hub_gguf"]:
+        model.push_to_hub_gguf(
+            f"{save_args["online_directory"]}/{save_args["online_name"]}-GGUF",
+            tokenizer,
+            quantization_method = save_args["quantization_method_gguf"],
+        )
+
+
 
 

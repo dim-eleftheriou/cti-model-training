@@ -1,6 +1,8 @@
 import warnings
 warnings.filterwarnings("ignore")
 
+import datetime
+
 from unsloth import FastLanguageModel
 import torch
 
@@ -24,7 +26,7 @@ from unsloth import unsloth_train
 
 from eval_metrics import compute_metrics
 
-from utils import save_log_history
+from utils import save_log_history, save_model
 
 if __name__ == "__main__":
 
@@ -85,3 +87,5 @@ if __name__ == "__main__":
     trainer_stats = unsloth_train(trainer)
     
     save_log_history(trainer)
+
+    #save_model(model, tokenizer, config)

@@ -24,16 +24,24 @@ model_loading_args:
   # Select model name from huggingface
   model_name: meta-llama/Llama-3.2-1B #unsloth/Llama-3.2-1B
 
-model_uploading_args:
+model_saving_args:
 
   # Select if trained model should be uploaded to hugging face
-  push_to_hub: True
+  push_to_hub: False
   # Select if trained model should be uploaded to hugging face in private mode
-  private: False
+  private: True
   # Select model name to used for uploading to huggingface after training
-  model_name_for_saving: Llama-3.1-8B-Instruct
-  # Quantization method for storing the model merged with adapters. Could more than one!
-  quantization_method: ["q4_k_m", "q8_0"] #F32 F16 BF16 Q4_0 Q4_1 Q5_0 Q5_1 Q8_0 Q2_K Q3_K Q4_K Q5_K Q6_K IQ1_S IQ1_M IQ2_XXS IQ2_XS IQ2_S IQ3_XXS IQ3_S IQ4_XS IQ4_NL
+  adapters_name: CTI-Lora-Model
+  # Select if trained model should be saved as GGUF
+  save_to_gguf: False
+  # Select if trained model should be uploaded to hugging face in GGUF format
+  push_to_hub_gguf: False
+  # Quantization methods for GGUF saving
+  quantization_method_gguf: ["not_quantized", "f16", "q8_0"]
+  # Online directory for pushing model to hugging face
+  online_directory: dim-eleftheriou
+  # Online name
+  online_name: DarkWatch
 
 ##################################
 # Fine-tuning mode configuration #
