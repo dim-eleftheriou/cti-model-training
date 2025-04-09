@@ -1,5 +1,6 @@
 *.csv
 venv
+venv-eda
 data
 outputs
 _unsloth_temporary_saved_buffers
