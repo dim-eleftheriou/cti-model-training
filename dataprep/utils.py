@@ -10,6 +10,7 @@ import requests
 import time
 import pandas as pd
 import os
+import re
 
 def extract_report(source):
     converter = DocumentConverter()
@@ -128,53 +129,48 @@ def read_report(filepath, filename):
         report = f.read()
     return report
 
-def augment_unscraped_refs(report_names, initial_data_path, formatted_data_path, failure_message):
-    initial_data_used = []
-    reports_lost = []
+def add_pictures_to_formatted_data(report_name, initial_data_path, formatted_data_path):
 
-    # Iterate over raw reports
-    for report_name in os.listdir(formatted_data_path):
-        folderpath = os.path.join(formatted_data_path, report_name)
-        report_doc = ""
-        OK = 0
+    unformatted_report = read_report(initial_data_path, report_name + ".txt")
 
-        # Iterate over refs of reports
-        for filename in os.listdir(folderpath):
-            ref = read_report(folderpath, filename)
-            # Keep only valid reports
-            if failure_message in ref:
-                continue
-            else:
-                report_doc += ref
-                OK += 1
+    # Match text between <image>...</image>
+    images = re.findall(r'(<image>.*?</image>)', unformatted_report, re.DOTALL)
 
-        # Check if initial report is available if all refs are failed
-        if not OK:
-            # Check if initial report is ok
-            initial_report_name = report_name + ".txt"
-            if initial_report_name in os.listdir(initial_data_path):
-                ref = read_report(initial_data_path, initial_report_name)
-                report_doc += "CTI REPORT\n\n{report}\n\n".format(
-                    report = ref
-            )
-                OK += 1
-                initial_data_used.append(report_name)
-            else:
-                reports_lost.append(report_name)
+    folderpath = os.path.join(formatted_data_path, report_name)
+    formatted_report = read_report(folderpath, "report")
 
-        # Write new reports
+    if images:
+        image_descs = "\n\n".join(images)
+
+        formatted_report += f"### Image Descriptions ###\n\n\n{image_descs}"
+    
+    return formatted_report
         
 
+def create_final_dataset(report_names, 
+                         initial_data_path, 
+                         formatted_data_path, 
+                         alienvault_data_path, 
+                         final_data_path):
+    for rn in report_names:
 
+        exist_unformatted = rn + ".txt" in os.listdir(initial_data_path)
+        exist_formatted = rn in os.listdir(formatted_data_path)
+        exist_alienvault = rn in os.listdir(alienvault_data_path)
 
-        
+        if exist_unformatted and exist_formatted:
+            final_report = add_pictures_to_formatted_data(rn, initial_data_path, formatted_data_path)
+        elif exist_formatted:
+            folderpath = os.path.join(formatted_data_path, rn)
+            final_report = read_report(folderpath, "report")
+        elif exist_unformatted:
+            final_report = read_report(initial_data_path, rn + ".txt")
+        else:
+            continue
 
+        if exist_alienvault:
+            folderpath = os.path.join(alienvault_data_path, rn)
+            alienvault_report = read_report(folderpath, "report")
+            final_report += f"\n\n\n{'#'*200}\n\n\n{alienvault_report}"
 
-
-
-def replace_pictures(initial_data_path, formatted_data_path):
-
-    for report_name in os.listdir(formatted_data_path):
-        folderpath = os.path.join(formatted_data_path, report_name)
-        for filename in os.listdir(folderpath):
-            ref = read_report(folderpath, filename)
+        write_report(final_data_path, rn + ".txt", final_report)
