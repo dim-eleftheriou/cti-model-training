@@ -21,6 +21,8 @@ model_loading_args:
   load_in_4bit: True
   # Use 8bit quantization to reduce memory usage.
   load_in_8bit: False
+  # Do not quantize the model
+  full_finetuning: False
   # Select model name from huggingface
   model_name: meta-llama/Llama-3.2-1B #unsloth/Llama-3.2-1B
 

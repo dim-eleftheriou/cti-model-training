@@ -30,17 +30,22 @@ from utils import save_log_history, save_model
 
 if __name__ == "__main__":
 
+    # Load configuration file
     with open("config.yaml", "r") as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
+    # Load model and tokenizer
     model, tokenizer = FastLanguageModel.from_pretrained(
         **config["model_loading_args"]
     )
 
+    # Configure tokenizer parameters 
     model, tokenizer = customize_tokenizer(model, tokenizer, config)
 
+    # Load dataset
     dataset = SplittedJsonIoDataset(tokenizer, config["system_message"]).create()
 
+    # Remove examples of dataset based on token counts
     if config["filter_dataset"]:
         dataset = filter_by_token_counts(dataset, tokenizer, config)
 
@@ -50,6 +55,7 @@ if __name__ == "__main__":
         **config["lora_parameters"]
     )
 
+    # Set Data Collator based on training parameters
     if config["fine_tuning_args"]["training_type"]=="text_completion":
         _train_on_responses_only_bool = True
         data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
@@ -59,6 +65,7 @@ if __name__ == "__main__":
     else:
         raise Exception("Wrong Training Type. Check config.yaml")
 
+    # Initiate UnslothTrainer
     trainer = UnslothTrainer(
         model = model,
         tokenizer = tokenizer,
