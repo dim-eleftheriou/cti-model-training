@@ -1,0 +1,45 @@
+#########
+# Paths #
+#########
+raw_stix_bundles_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/bundles/raw # Read path
+processed_stix_bundles_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/bundles/processed # Save path
+
+##########################
+# Training Dataset Paths #
+##########################
+training_examples_file: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/training_examples.txt
+input_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/bundles/processed/complete_bundles
+output_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/reports/final-reports
+io_save_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/io-pairs
+
+##################################################
+# Drop any SDO that is not needed in STIX bundle #
+##################################################
+stix_objects_to_ignore: 
+  marking-definition: []
+  identity:
+    - [name, AlienVault]
+
+####################################################
+# Split data in Domain Objects while saving.       #
+# STIX bundles will contain only the selected type #
+# of SDO or SCO or SRO. ONLY one Object type       #
+# will be present in STIX bundles                  #
+####################################################
+split_stix_types_in_saving:
+  - identity
+  - report
+  - relationship
+  - indicator
+  - file
+  - malware 
+  - attack-pattern 
+  - domain-name
+  - intrusion-set 
+  - url
+  - vulnerability 
+  - location
+  - hostname
+  - cryptocurrency-wallet 
+  - email-addr
+  - ipv4-addr

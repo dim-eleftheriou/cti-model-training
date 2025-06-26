@@ -1,0 +1,183 @@
+2025-06-11 12:49:00,063 - INFO - Starting STIX bundle processing.
+2025-06-11 12:49:00,063 - INFO - Reading configuration...
+2025-06-11 12:49:00,063 - INFO - Reading STIX bundles...
+2025-06-11 12:49:03,182 - INFO - Filtering STIX bundles...
+2025-06-11 12:49:04,591 - INFO - 56 STIX bundles failed on Validation process.
+        These are the bundles which failed: {'025b1dbb-d9c3-4d81-b398-f22a38a4c020.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--105be265-...7d9-a14a-16665bf9e81c']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '03e0059f-5ca1-4ad6-984d-810dfbb376b4.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--9382c20a-...932-9028-a0ed04065fa6']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '075b3c51-9336-4a57-ba5d-b1d5a6628c20.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--316860df-...8e8-8865-1a9d6207e2a3']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '0e549058-0509-419d-85ee-4b346d21b8c0.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--4b1a859f-...c2f-b3f0-e422cf127ee2']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '1073352d-7350-494c-b751-8897c509e6c1.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--7b6c40e6-...932-9028-a0ed04065fa6']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '15ed2093-e057-4b28-92af-bd4422ba5358.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--2888d7de-...5a0-9bbc-ae2728e40682']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '226dd73e-bd88-4a0c-a726-d152798247c5.json': 1 validation error for File
+hashes
+  Field required [type=missing, input_value={'id': 'file--27d71ee9-2e...8c7-9eca-b8e91df99dc9']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '247367b6-f585-4a87-b2f1-261c5bc9d470.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--5fd73f52-...228-806c-2a2eac8a1b4c']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '2674c3b1-ebd6-40ff-bf74-3848f457eec5.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--3ea1da3c-...4ae-abd9-c5e757d747f1']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '29b2a96a-ac29-41c0-8de2-c5aacba1bff9.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--e59b466f-...578-a59e-e323225de248']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '2bc26f40-0e6a-4871-bb92-33e5692ccada.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--73efe966-...756-80cb-0f3b84be23b7']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '2de0b414-4526-43fb-b6ef-3416bc74c639.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--b2a2f101-...0df-928f-39862cfb9ef8']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '2efbea60-032b-4a8c-a985-6d1a43ab1802.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--7870bdef-...92b-bc68-0a30d802c7d9']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '3185d124-7827-401a-9ac0-5e1886ddfc1f.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--77d0c955-...968-8327-e6dc89318411']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '333189ec-cbeb-471f-97fb-854da8c39323.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--256791c3-...e95-99ff-547d2aab1e39']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '3595e1ee-51b3-48bc-a7c6-3b9814bcdd45.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--c0d1f710-...062-9e92-3392bfb2fd74']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '361d71a5-ecfa-4c7a-bcee-3da239648f89.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--2cc133ee-...d39-b743-cb0f8340b3df']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '390db10b-b342-4e9a-81ef-33c969ed09ba.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--5cfc9f44-...62d-ac7e-7ac84532975f']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '3a96273c-cc7d-437f-b91b-31ae90949cf2.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--66766561-...f05-8bc0-d3d9fc945db9']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '41f1d8c8-8955-4b11-ad5c-83e42a0d5210.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--11e7bc9b-...55e-83e2-b1fdf388bbc2']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '4555c3e2-c750-493e-8b1b-d7b150165cd9.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--b9abf523-...932-9028-a0ed04065fa6']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '48dbed0c-2748-4243-bb06-f5e5a527ee03.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--5d9bd9f5-...932-9028-a0ed04065fa6']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '4c9d5582-e15c-49a3-b2db-23519b7d993e.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--39146cf7-...2f7-932d-033bddab7a03']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '58e3daee-39f6-4681-b69c-16c02491f635.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--f7bcbb7d-...e95-99ff-547d2aab1e39']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '5c6770f2-8d00-49f0-9663-2c003086d4da.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--7a94e4d9-...e95-99ff-547d2aab1e39']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '5ec32823-fa2c-4f4c-9bd1-583ed76cc642.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--f7775245-...062-9e92-3392bfb2fd74']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '6423ba22-944c-4be2-b472-09a0d7fa2576.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--59bd77cf-...c2e-be23-3b175d53e1ce']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '6d455381-9fcd-4353-8c6b-5f791f61d102.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--a395ed3f-...bb1-9001-abea697dc5f0']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '712bc3b2-8348-41c2-bdf6-8a55a0a8527b.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--86875b81-...2c3-acf0-afcb327cd883']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '725808a4-1ac2-4573-9dd8-76381af4b8ad.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--979b635e-...d39-b743-cb0f8340b3df']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '7a4520e7-94c8-4961-9f7e-fdd774e51ed3.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--e681cbac-...b46-9872-3100d323d7d2']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '7e1a9f38-4177-4cae-a337-6e1119727d55.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--05e74c74-...678-9512-577498aafb0e']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '89ca13a8-546b-4231-9337-39344eba4838.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--fdcff4e4-...13a-aaaf-c0417f99e1ce']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '8b8ed0d0-07a8-49b0-9755-81af72b27a37.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--38386d7e-...55e-83e2-b1fdf388bbc2']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '93538c53-f8a9-4e65-b23d-f515eccde29c.json': 2 validation errors for Report
+description
+  Field required [type=missing, input_value={'id': 'report--ca658e08-...c1e-9d78-0d375f59280b']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing
+labels
+  Field required [type=missing, input_value={'id': 'report--ca658e08-...c1e-9d78-0d375f59280b']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '990ff067-e15f-4358-9a16-59460c9399fc.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--4b04b97e-...c5e-9326-4e1a842931ce']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, '99b22b61-36f1-4b17-9b6a-1be422e3ef89.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--bf29922a-...405-aa23-f86a97588a3c']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'a0310751-e66d-43e1-9418-8569fe9fee6b.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--23e80e44-...756-80cb-0f3b84be23b7']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'a971d854-b16c-4b84-aeec-e7bd4e30c4da.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--b082926a-...620-80fd-ed766b3bea56']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'b11bddaa-2dc6-412c-9541-57562859e19b.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--8d7f50c1-...99c-90dc-2ac36b766041']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'b677f308-8ba9-404d-b8db-53eb518fe0c8.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--a36f2241-...15b-98b8-6341b3b27996']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'b99ff77f-3523-4f04-aed7-1640ac72a6d2.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--0ee6c311-...55e-83e2-b1fdf388bbc2']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'c82394c7-86cc-430c-9a52-ef7c508be562.json': 2 validation errors for Report
+description
+  Field required [type=missing, input_value={'id': 'report--d7b9e6d4-...d94-9fdc-a0470e1d29b1']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing
+labels
+  Field required [type=missing, input_value={'id': 'report--d7b9e6d4-...d94-9fdc-a0470e1d29b1']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'c9675f31-aaab-4164-b36b-ab5919b878b0.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--54a0d3fe-...641-a9e5-e20f672b2a69']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'ca81f8e2-a5db-4119-990e-d27d0ed5d232.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--4746cb60-...026-90d7-23a411d2448b']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'd0cbb98d-b5ae-4cee-a9b7-c7023783f86b.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--1d40f6a4-...118-aa0f-fe5975ff9a25']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'd4adbf44-d42e-4d5e-b4c7-fbb786d1ab3b.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--2c66be94-...d77-bfeb-831f3728f104']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'd55aeae6-71bc-4d3b-85cf-ea857f8cb779.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--19c8a4fb-...48c-9462-2817f251628d']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'd66b4613-53e7-4d8b-a50c-4018b2077440.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--16cab3ae-...f58-81d0-589996b2ab28']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'ddcb81d8-7486-4fc9-905a-7e66859c4333.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--b69b347e-...609-ae3d-81c18285f00b']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'e7f21d65-195f-4768-84bc-61063508c579.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--c0216fc4-...e95-99ff-547d2aab1e39']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'eb4a6d25-8029-4c85-8a8a-c60b1d53fc60.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--bf11d75c-...67f-9c21-b87f2a8c7505']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'ec0d7750-9735-432a-82b2-fe11d089f9ac.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--37bc5d94-...55e-83e2-b1fdf388bbc2']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'ee0b82a5-8b72-4492-bafe-0481dff0ff89.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--16118959-...42d-b2cd-fd5217a9106d']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'f0c4b5bc-835b-4c0c-8f5b-7112051fd2bf.json': 1 validation error for Report
+description
+  Field required [type=missing, input_value={'id': 'report--c8ffa9d9-...316-a848-494620f27fe8']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing, 'f53b9bbf-48b5-4ca8-b14c-7303fbfb4495.json': 1 validation error for Report
+labels
+  Field required [type=missing, input_value={'id': 'report--d9fc4621-...609-ae3d-81c18285f00b']}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing}
+2025-06-11 12:49:04,599 - INFO - Assigning new IDs...
+2025-06-11 12:49:07,303 - INFO - Saving processed STIX bundles...
+2025-06-11 12:49:23,588 - INFO - Processing complete.
