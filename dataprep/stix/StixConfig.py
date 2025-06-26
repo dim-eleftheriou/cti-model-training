@@ -2,6 +2,11 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, Annotated, Literal, Any
 
+class STIX(BaseModel):
+    id: str
+    type: str
+    objects: list[dict]
+
 class SDO(BaseModel):
     id: str
     type: str
