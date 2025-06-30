@@ -1,15 +1,15 @@
 """
-2025.3.13
-2025.3.15
-4.49.0
-0.15.2
+2025.6.6
+2025.6.8
+4.53.0
+0.19.0
 __UNSLOTH_VERSIONING__
 """
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from trl.trainer.kto_trainer import (Any, AutoModelForCausalLM, BaseImageProcessor, Callable, DPODataCollatorWithPadding, DataCollator, DataLoader, Dataset, EvalLoopOutput, F, FeatureExtractionMixin, KTOConfig, KTOTrainer, Literal, Optional, PartialState, PeftModel, PreTrainedModel, PreTrainedModelWrapper, PreTrainedTokenizerBase, ProcessorMixin, SequentialSampler, Trainer, TrainerCallback, TrainingArguments, Union, _get_kl_dataset, _process_tokens, _tokenize, amp, concatenate_datasets, contextmanager, create_reference_model, deepcopy, defaultdict, disable_dropout_in_model, generate_model_card, get_comet_experiment_url, has_length, inspect, is_comet_available, is_peft_available, is_wandb_available, itemgetter, log_table_to_comet_experiment, maybe_apply_chat_template, maybe_extract_prompt, maybe_unpair_preference_dataset, nn, np, nullcontext, os, pad_to_length, pd, peft_module_casting_to_bf16, prepare_model_for_kbit_training, random, textwrap, torch, tqdm, transformers, version, warnings)
+from trl.trainer.kto_trainer import (Any, AutoModelForCausalLM, BaseImageProcessor, Callable, DPODataCollatorWithPadding, DataCollator, DataLoader, Dataset, EvalLoopOutput, F, FeatureExtractionMixin, KTOConfig, KTOTrainer, Literal, Optional, PartialState, Path, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SequentialSampler, Trainer, TrainerCallback, TrainingArguments, Union, _get_kl_dataset, _process_tokens, _tokenize, autocast, concatenate_datasets, contextmanager, create_reference_model, defaultdict, disable_dropout_in_model, generate_model_card, get_comet_experiment_url, has_length, inspect, is_comet_available, is_liger_kernel_available, is_peft_available, is_wandb_available, itemgetter, log_table_to_comet_experiment, maybe_apply_chat_template, maybe_extract_prompt, maybe_unpair_preference_dataset, nn, np, nullcontext, os, pad_to_length, pd, peft_module_casting_to_bf16, prepare_deepspeed, prepare_model_for_kbit_training, random, textwrap, torch, tqdm, warnings, F, Optional, PeftModel, PreTrainedModel, Trainer, is_peft_available, os, torch)
 
 
 import os
@@ -20,7 +20,7 @@ import torch
 import numpy as np
 from contextlib import nullcontext
 from torch.nn import functional as F
-from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling
+from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling as TransformersDataCollatorForLanguageModeling
 
 torch_compile_options = {
     "epilogue_fusion"   : True,
@@ -45,14 +45,15 @@ class UnslothKTOConfig(KTOConfig):
     
     Configuration class for the [`KTOTrainer`].
 
+    This class includes only the parameters that are specific to KTO training. For a full list of training arguments,
+    please refer to the [`~transformers.TrainingArguments`] documentation. Note that default values in this class may
+    differ from those in [`~transformers.TrainingArguments`].
+
     Using [`~transformers.HfArgumentParser`] we can turn this class into
     [argparse](https://docs.python.org/3/library/argparse#module-argparse) arguments that can be specified on the
     command line.
 
     Parameters:
-        learning_rate (`float`, *optional*, defaults to `5e-7`):
-            Initial learning rate for [`AdamW`] optimizer. The default value replaces that of
-            [`~transformers.TrainingArguments`].
         max_length (`int` or `None`, *optional*, defaults to `1024`):
             Maximum length of the sequences (prompt + completion) in the batch. This argument is required if you want
             to use the default data collator.
@@ -68,7 +69,8 @@ class UnslothKTOConfig(KTOConfig):
             Type of loss to use. Possible values are:
 
                 - `"kto"`: KTO loss from the [KTO](https://huggingface.co/papers/2402.01306) paper.
-                - `"apo_zero_unpaired"`: Unpaired variant of APO-zero loss from the [APO](https://huggingface.co/papers/2408.06266) paper.
+                - `"apo_zero_unpaired"`: Unpaired variant of APO-zero loss from the
+                  [APO](https://huggingface.co/papers/2408.06266) paper.
 
         desirable_weight (`float`, *optional*, defaults to `1.0`):
             Desirable losses are weighed by this factor to counter unequal number of desirable and undesirable paris.
@@ -82,8 +84,8 @@ class UnslothKTOConfig(KTOConfig):
             Truncation mode to use when the prompt is too long. Possible values are `"keep_end"` or `"keep_start"`.
             This argument is required if you want to use the default data collator.
         generate_during_eval (`bool`, *optional*, defaults to `False`):
-            If `True`, generates and logs completions from both the model and the reference model to W&B or Comet during
-            evaluation.
+            If `True`, generates and logs completions from both the model and the reference model to W&B or Comet
+            during evaluation.
         is_encoder_decoder (`bool` or `None`, *optional*, defaults to `None`):
             When using the `model_init` argument (callable) to instantiate the model instead of the `model` argument,
             you need to specify if the model returned by the callable is an encoder-decoder model.
@@ -100,6 +102,11 @@ class UnslothKTOConfig(KTOConfig):
             Number of processes to use for processing the dataset.
         disable_dropout (`bool`, *optional*, defaults to `True`):
             Whether to disable dropout in the model and reference model.
+        use_liger_loss (`bool`, *optional*, defaults to `False`):
+            Whether to use Liger loss. It requires liger-kernel to be installed.
+        base_model_attribute_name (`str`, *optional*, defaults to `"model"`):
+            Name of the attribute in the model that contains the base model. This is used to get the base model from
+            the model when the model does not have a `get_decoder` method in the case when `use_liger_loss` is `True`.
     
     """
     vllm_sampling_params: Optional[Any] = field(
@@ -212,12 +219,12 @@ class UnslothKTOConfig(KTOConfig):
         hub_token = None,
         hub_private_repo = None,
         hub_always_push = False,
+        hub_revision = None,
         gradient_checkpointing = False,
         gradient_checkpointing_kwargs = None,
         include_inputs_for_metrics = False,
         eval_do_concat_batches = True,
         fp16_backend = 'auto',
-        evaluation_strategy = None,
         push_to_hub_model_id = None,
         push_to_hub_organization = None,
         push_to_hub_token = None,
@@ -230,8 +237,6 @@ class UnslothKTOConfig(KTOConfig):
         torch_compile = False,
         torch_compile_backend = None,
         torch_compile_mode = None,
-        dispatch_batches = None,
-        split_batches = None,
         include_tokens_per_second = False,
         include_num_input_tokens_seen = False,
         neftune_noise_alpha = None,
@@ -239,6 +244,7 @@ class UnslothKTOConfig(KTOConfig):
         batch_eval_metrics = False,
         eval_on_start = False,
         use_liger_kernel = False,
+        liger_kernel_config = None,
         eval_use_gather_object = False,
         average_tokens_across_devices = False,
         max_length = 1024,
@@ -258,6 +264,8 @@ class UnslothKTOConfig(KTOConfig):
         model_init_kwargs = None,
         ref_model_init_kwargs = None,
         dataset_num_proc = None,
+        use_liger_loss = False,
+        base_model_attribute_name = 'model',
         vllm_sampling_params = None,
         unsloth_num_chunks = -1,
         **kwargs,
@@ -372,12 +380,12 @@ class UnslothKTOConfig(KTOConfig):
             hub_token = hub_token,
             hub_private_repo = hub_private_repo,
             hub_always_push = hub_always_push,
+            hub_revision = hub_revision,
             gradient_checkpointing = gradient_checkpointing,
             gradient_checkpointing_kwargs = gradient_checkpointing_kwargs,
             include_inputs_for_metrics = include_inputs_for_metrics,
             eval_do_concat_batches = eval_do_concat_batches,
             fp16_backend = fp16_backend,
-            evaluation_strategy = evaluation_strategy,
             push_to_hub_model_id = push_to_hub_model_id,
             push_to_hub_organization = push_to_hub_organization,
             push_to_hub_token = push_to_hub_token,
@@ -390,8 +398,6 @@ class UnslothKTOConfig(KTOConfig):
             torch_compile = torch_compile,
             torch_compile_backend = torch_compile_backend,
             torch_compile_mode = torch_compile_mode,
-            dispatch_batches = dispatch_batches,
-            split_batches = split_batches,
             include_tokens_per_second = include_tokens_per_second,
             include_num_input_tokens_seen = include_num_input_tokens_seen,
             neftune_noise_alpha = neftune_noise_alpha,
@@ -399,6 +405,7 @@ class UnslothKTOConfig(KTOConfig):
             batch_eval_metrics = batch_eval_metrics,
             eval_on_start = eval_on_start,
             use_liger_kernel = use_liger_kernel,
+            liger_kernel_config = liger_kernel_config,
             eval_use_gather_object = eval_use_gather_object,
             average_tokens_across_devices = average_tokens_across_devices,
             max_length = max_length,
@@ -417,7 +424,9 @@ class UnslothKTOConfig(KTOConfig):
             precompute_ref_log_probs = precompute_ref_log_probs,
             model_init_kwargs = model_init_kwargs,
             ref_model_init_kwargs = ref_model_init_kwargs,
-            dataset_num_proc = dataset_num_proc,**kwargs)
+            dataset_num_proc = dataset_num_proc,
+            use_liger_loss = use_liger_loss,
+            base_model_attribute_name = base_model_attribute_name,**kwargs)
         self.vllm_sampling_params = vllm_sampling_params
         self.unsloth_num_chunks = unsloth_num_chunks
 pass
@@ -524,7 +533,7 @@ class _UnslothKTOTrainer(Trainer):
                     prepare_model_kwargs["gradient_checkpointing_kwargs"] = args.gradient_checkpointing_kwargs
 
                 model = prepare_model_for_kbit_training(model, **prepare_model_kwargs)
-            elif getattr(args, "gradient_checkpointing", False):
+            elif args.gradient_checkpointing:
                 # For backward compatibility with older versions of transformers
                 if hasattr(model, "enable_input_require_grads"):
                     model.enable_input_require_grads()
@@ -545,7 +554,7 @@ class _UnslothKTOTrainer(Trainer):
         # For models that use gradient_checkpointing, we need to attach a hook that enables input
         # to explicitly have `requires_grad=True`, otherwise training will either silently
         # fail or completely fail.
-        elif getattr(args, "gradient_checkpointing", False):
+        elif args.gradient_checkpointing:
             # For backward compatibility with older versions of transformers
             if hasattr(model, "enable_input_require_grads"):
                 model.enable_input_require_grads()
@@ -681,7 +690,7 @@ class _UnslothKTOTrainer(Trainer):
                 UserWarning,
             )
 
-        # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
+        # The trainer estimates the number of FLOPs [floating-point operations] using the number of elements in the
         # input tensor associated with the key "input_ids". However, in KTO, the sampled data does not include the
         # "input_ids" key. Instead, the available keys are "prompt_input_ids" and "completion_input_ids". As a result,
         # the trainer issues the warning: "Could not estimate the number of tokens of the input, floating-point
@@ -692,7 +701,7 @@ class _UnslothKTOTrainer(Trainer):
 
         # Compute that only on the main process for faster data processing.
         # see: https://github.com/huggingface/trl/pull/1255
-        with PartialState().local_main_process_first():
+        with PartialState().main_process_first():
             # Extract the prompt if needed
             train_dataset = train_dataset.map(
                 maybe_extract_prompt, num_proc=args.dataset_num_proc, desc="Extracting prompt from train dataset"
@@ -774,7 +783,7 @@ class _UnslothKTOTrainer(Trainer):
                     )
 
                 # create pairs for estimating the KL term by flipping the matched pairs in each batch of size total_batch_size
-                # i.e., (x_1, y_1), ..., (x_n, y_n) --> (x_1, y_n), ..., (x_n, y_1) = (x'_1, y'_1), ..., (x'_n, y'_n)
+                # i.e., [x_1, y_1], ..., [x_n, y_n] --> [x_1, y_n], ..., [x_n, y_1] = [x'_1, y'_1], ..., [x'_n, y'_n]
                 train_kl_dataset = train_dataset.map(
                     _get_kl_dataset,
                     batched=True,
@@ -821,7 +830,7 @@ class _UnslothKTOTrainer(Trainer):
             num_undesirable = max(len(train_dataset["label"]) - num_desirable, 1)  # "label" is binary
 
             if num_desirable != num_undesirable:
-                # The lower and upper bounds come from Eq. (8) of https://huggingface.co/papers/2402.01306
+                # The lower and upper bounds come from Eq. [8] of https://huggingface.co/papers/2402.01306
                 des_weight_lower_bound = round((num_undesirable * self.undesirable_weight / num_desirable) * 1, 2)
                 des_weight_upper_bound = round((num_undesirable * self.undesirable_weight / num_desirable) * 1.33, 2)
                 und_weight_lower_bound = round((num_desirable * self.desirable_weight / num_undesirable) / 1.33, 2)
@@ -883,40 +892,34 @@ class _UnslothKTOTrainer(Trainer):
                 )
         else:
             if self.is_deepspeed_enabled:
-                self.ref_model = self._prepare_deepspeed(self.ref_model)
+                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
-    def _prepare_deepspeed(self, model: PreTrainedModelWrapper):
-        # Adapted from accelerate: https://github.com/huggingface/accelerate/blob/739b135f8367becb67ffaada12fe76e3aa60fefd/src/accelerate/accelerator.py#L1473
-        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
-        config_kwargs = deepcopy(deepspeed_plugin.deepspeed_config)
-
-        if model is not None:
-            if hasattr(model, "config"):
-                hidden_size = (
-                    max(model.config.hidden_sizes)
-                    if getattr(model.config, "hidden_sizes", None)
-                    else getattr(model.config, "hidden_size", None)
+        # Import Liger loss if enabled
+        if self.args.use_liger_loss:
+            if not is_liger_kernel_available():
+                raise ImportError(
+                    "You set `use_liger_loss=True` but the liger kernel is not available. "
+                    "Please install liger-kernel first: `pip install liger-kernel`"
                 )
-                if hidden_size is not None and config_kwargs["zero_optimization"]["stage"] == 3:
-                    # Note that `stage3_prefetch_bucket_size` can produce DeepSpeed messages like: `Invalidate trace cache @ step 0: expected module 1, but got module 0`
-                    # This is expected and is not an error, see: https://github.com/microsoft/DeepSpeed/discussions/4081
-                    config_kwargs.update(
-                        {
-                            "zero_optimization.reduce_bucket_size": hidden_size * hidden_size,
-                            "zero_optimization.stage3_param_persistence_threshold": 10 * hidden_size,
-                            "zero_optimization.stage3_prefetch_bucket_size": 0.9 * hidden_size * hidden_size,
-                        }
-                    )
-
-        # If ZeRO-3 is used, we shard both the active and reference model.
-        # Otherwise, we assume the reference model fits in memory and is initialized on each device with ZeRO disabled (stage 0)
-        if config_kwargs["zero_optimization"]["stage"] != 3:
-            config_kwargs["zero_optimization"]["stage"] = 0
-        model, *_ = deepspeed.initialize(model=model, config=config_kwargs)
-        model.eval()
-        return model
+            if self.loss_type in ["apo_zero_unpaired"]:
+                raise ValueError(
+                    "You cannot set `loss_type='apo_zero_unpaired'` with liger-kernel."
+                    "Only KTO loss is supported with liger-kernel."
+                )
+            if self.precompute_ref_log_probs:
+                raise ValueError(
+                    "You cannot use `precompute_ref_log_probs=True` with liger kernel. Please set "
+                    "`precompute_ref_log_probs=False`."
+                )
+            if self.is_peft_model or self.ref_adapter_name is not None:
+                raise ValueError(
+                    "You cannot use `use_liger_loss=True` with Peft models. Please set `use_liger_loss=False`."
+                )
+            self.kto_loss_fn = LigerFusedLinearKTOLoss(
+                ignore_index=self.label_pad_token_id, beta=self.beta, use_ref_model=(self.ref_model is not None)
+            )
 
     @contextmanager
     def null_ref_context(self):
@@ -1121,12 +1124,18 @@ class _UnslothKTOTrainer(Trainer):
         """Compute the log probabilities of the given labels under the given logits.
 
         Args:
-            logits: Logits of the model (unnormalized). Shape: (batch_size, sequence_length, vocab_size)
-            labels: Labels for which to compute the log probabilities. Label tokens with a value of label_pad_token_id are ignored. Shape: (batch_size, sequence_length)
-            average_log_prob: If True, return the average log probability per (non-masked) token. Otherwise, return the sum of the log probabilities of the (non-masked) tokens.
+            logits:
+                Logits of the model (unnormalized). Shape: (batch_size, sequence_length, vocab_size)
+            labels:
+                Labels for which to compute the log probabilities. Label tokens with a value of label_pad_token_id are
+                ignored. Shape: (batch_size, sequence_length)
+            average_log_prob:
+                If True, return the average log probability per (non-masked) token. Otherwise, return the sum of the
+                log probabilities of the (non-masked) tokens.
 
         Returns:
-            A tensor of shape (batch_size,) containing the average/sum log probabilities of the given labels under the given logits.
+            A tensor of shape (batch_size,) containing the average/sum log probabilities of the given labels under the
+            given logits.
         """
         if logits.shape[:-1] != labels.shape:
             raise ValueError("Logits (batch and sequence length dim) and labels must have the same shape.")
@@ -1153,35 +1162,7 @@ class _UnslothKTOTrainer(Trainer):
     def forward(
         self, model: nn.Module, batch: dict[str, Union[list, torch.LongTensor]]
     ) -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        if self.calculate_KL:
-            KL_logps = None
-            KL_model_kwargs = (
-                {
-                    "input_ids": batch["KL_prompt_input_ids"],
-                    "attention_mask": batch["KL_prompt_attention_mask"],
-                    "labels": batch["KL_completion_labels"],
-                    "decoder_input_ids": batch.get("KL_completion_decoder_input_ids"),
-                }
-                if self.is_encoder_decoder
-                else {
-                    "input_ids": batch["KL_completion_input_ids"],
-                    "attention_mask": batch["KL_completion_attention_mask"],
-                }
-            )
-            with torch.no_grad():
-                KL_logits = model(
-                    **KL_model_kwargs,
-                ).logits
-
-            KL_logps = self.get_batch_logps(
-                KL_logits,
-                batch["KL_completion_labels"],
-                average_log_prob=False,
-                is_encoder_decoder=self.is_encoder_decoder,
-                label_pad_token_id=self.label_pad_token_id,
-            )
-        else:
-            KL_logps = None
+        KL_logps = self._compute_kl_logps(model, batch)
 
         model_kwargs = (
             {
@@ -1241,18 +1222,23 @@ class _UnslothKTOTrainer(Trainer):
         """Compute the KTO loss for a batch of policy and reference model log probabilities.
 
         Args:
-            policy_chosen_logps: Log probabilities of the policy model for the chosen responses. Shape: (num(chosen) in batch_size,)
-            policy_rejected_logps: Log probabilities of the policy model for the rejected responses. Shape: (num(rejected) in batch_size,)
+            policy_chosen_logps:
+                Log probabilities of the policy model for the chosen responses. Shape: (num(chosen) in batch_size,)
+            policy_rejected_logps:
+                Log probabilities of the policy model for the rejected responses. Shape: (num(rejected) in batch_size,)
             policy_KL_logps: Log probabilities of the policy model for the KL responses. Shape: (batch_size,)
-            reference_chosen_logps: Log probabilities of the reference model for the chosen responses. Shape: (num(chosen) in batch_size,)
-            reference_rejected_logps: Log probabilities of the reference model for the rejected responses. Shape: (num(rejected) in batch_size,)
+            reference_chosen_logps:
+                Log probabilities of the reference model for the chosen responses. Shape: (num(chosen) in batch_size,)
+            reference_rejected_logps:
+                Log probabilities of the reference model for the rejected responses. Shape: (num(rejected) in
+                batch_size,)
             reference_KL_logps: Log probabilities of the reference model for the KL responses. Shape: (batch_size,)
 
         Returns:
-            A tuple of four tensors: (losses, chosen_rewards, rejected_rewards, KL).
-            The losses tensor contains the KTO loss for each example in the batch.
-            The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
-            The KL tensor contains the detached KL divergence estimate between the policy and reference models.
+            A tuple of four tensors: (losses, chosen_rewards, rejected_rewards, KL). The losses tensor contains the KTO
+            loss for each example in the batch. The chosen_rewards and rejected_rewards tensors contain the rewards for
+            the chosen and rejected responses, respectively. The KL tensor contains the detached KL divergence estimate
+            between the policy and reference models.
         """
         if self.calculate_KL:
             kl = (policy_KL_logps - reference_KL_logps).mean().detach()
@@ -1301,6 +1287,173 @@ class _UnslothKTOTrainer(Trainer):
 
         return losses, chosen_rewards, rejected_rewards, kl
 
+    def _compute_kl_logps(self, model, batch):
+        """Compute KL log probabilities for a given batch."""
+        KL_logps = None
+        if self.calculate_KL:
+            if self.is_encoder_decoder:
+                KL_model_kwargs = {
+                    "input_ids": batch["KL_prompt_input_ids"],
+                    "attention_mask": batch["KL_prompt_attention_mask"],
+                    "labels": batch["KL_completion_labels"],
+                    "decoder_input_ids": batch.get("KL_completion_decoder_input_ids"),
+                }
+            else:
+                KL_model_kwargs = {
+                    "input_ids": batch["KL_completion_input_ids"],
+                    "attention_mask": batch["KL_completion_attention_mask"],
+                }
+
+            with torch.no_grad():
+                KL_logits = model(**KL_model_kwargs).logits
+
+            KL_logps = self.get_batch_logps(
+                KL_logits,
+                batch["KL_completion_labels"],
+                average_log_prob=False,
+                is_encoder_decoder=self.is_encoder_decoder,
+                label_pad_token_id=self.label_pad_token_id,
+            )
+        return KL_logps
+
+    def _compute_loss_liger(self, model, batch):
+        """
+        Compute the KTO loss using the Liger-Kernel's LigerFusedLinearKTOLoss.
+
+        Args:
+            model:
+                The policy model used for generating log probabilities and outputs. It could be an encoder-decoder
+                model or a regular language model.
+            batch: A dictionary containing the input data and labels for the batch.
+
+        Returns:
+            A dictionary containing the following keys:
+                - "loss": The computed KTO loss for the batch.
+                - "chosen_logits_sum": Sum of the logits for the chosen responses from the policy model.
+                - "rejected_logits_sum": Sum of the logits for the rejected responses from the policy model.
+                - "chosen_logps": Log probabilities of the chosen responses from the policy model.
+                - "rejected_logps": Log probabilities of the rejected responses from the policy model.
+                - "chosen_rewards": Rewards for the chosen responses.
+                - "rejected_rewards": Rewards for the rejected responses.
+                - "kl": The KL divergence between the policy and reference models (detached).
+
+            If auxiliary loss is enabled, the dictionary will also include:
+                - "aux_loss": The auxiliary loss from the model outputs.
+        """
+        policy_KL_logps = self._compute_kl_logps(model, batch)
+        reference_KL_logps = self._compute_kl_logps(self.ref_model, batch)
+        if self.calculate_KL:
+            kl = (policy_KL_logps - reference_KL_logps).mean().detach()
+            kl = self.accelerator.gather_for_metrics(kl).mean().clamp(min=0)
+        else:
+            kl = torch.zeros(1).to(self.accelerator.device)
+
+        model_kwargs = (
+            {
+                "labels": batch["completion_labels"],
+                "decoder_input_ids": batch.get("completion_decoder_input_ids"),
+            }
+            if self.is_encoder_decoder
+            else {}
+        )
+        if self.aux_loss_enabled:
+            model_kwargs["output_router_logits"] = True
+
+        if self.is_encoder_decoder:
+            # 1. Get encoder outputs
+            encoder_outputs = model.get_encoder()(
+                batch["completion_input_ids"],
+                attention_mask=batch["completion_attention_mask"],
+                return_dict=True,
+                **model_kwargs,
+            )
+            # 2. Get decoder outputs
+            outputs = model.get_decoder()(
+                input_ids=model_kwargs["decoder_input_ids"],
+                encoder_hidden_states=encoder_outputs.last_hidden_state,
+                use_cache=False,
+                **model_kwargs,
+            )
+            # 1. Get reference encoder outputs
+            ref_encoder_outputs = self.ref_model.get_encoder()(
+                batch["completion_input_ids"],
+                attention_mask=batch["completion_attention_mask"],
+                return_dict=True,
+                **model_kwargs,
+            )
+            # 2. Get reference decoder outputs
+            ref_outputs = self.ref_model.get_decoder()(
+                input_ids=model_kwargs["decoder_input_ids"],
+                encoder_hidden_states=ref_encoder_outputs.last_hidden_state,
+                use_cache=False,
+                **model_kwargs,
+            )
+        else:
+            # skip the lm head and get the last hidden state
+            if hasattr(model, "get_decoder"):
+                base_model = model.get_decoder()
+            else:
+                base_model = getattr(model, self.args.base_model_attribute_name)
+            outputs = base_model(
+                batch["completion_input_ids"],
+                attention_mask=batch["completion_attention_mask"],
+                use_cache=False,
+                **model_kwargs,
+            )
+
+            # reference model
+            if hasattr(self.ref_model, "get_decoder"):
+                ref_base_model = self.ref_model.get_decoder()
+            else:
+                ref_base_model = getattr(self.ref_model, self.args.base_model_attribute_name)
+            ref_outputs = ref_base_model(
+                batch["completion_input_ids"],
+                attention_mask=batch["completion_attention_mask"],
+                use_cache=False,
+                **model_kwargs,
+            )
+        lm_head = model.get_output_embeddings()
+        ref_lm_head = self.ref_model.get_output_embeddings()
+
+        (
+            loss,
+            (
+                chosen_logps_sum,
+                rejected_logps_sum,
+                chosen_logits_sum,
+                rejected_logits_sum,
+                chosen_rewards_sum,
+                rejected_rewards_sum,
+            ),
+        ) = self.kto_loss_fn(
+            _input=outputs.last_hidden_state[:, :-1] if not self.is_encoder_decoder else outputs.last_hidden_state,
+            lin_weight=lm_head.weight,
+            target=batch["completion_labels"][:, 1:],
+            bias=lm_head.bias if hasattr(lm_head, "bias") else None,
+            preference_labels=torch.tensor(batch["label"], dtype=torch.bool).to(self.accelerator.device),
+            ref_input=ref_outputs.last_hidden_state[:, :-1]
+            if not self.is_encoder_decoder
+            else outputs.last_hidden_state,
+            ref_weight=ref_lm_head.weight,
+            ref_bias=ref_lm_head.bias if hasattr(lm_head, "bias") else None,
+            kl=kl,
+        )
+
+        output = {
+            "loss": loss,
+            "chosen_logits_sum": chosen_logits_sum,
+            "rejected_logits_sum": rejected_logits_sum,
+            "chosen_logps_sum": chosen_logps_sum,
+            "rejected_logps_sum": rejected_logps_sum,
+            "chosen_rewards_sum": chosen_rewards_sum,
+            "rejected_rewards_sum": rejected_rewards_sum,
+            "kl": kl,
+        }
+        if self.aux_loss_enabled:
+            output["aux_loss"] = outputs.aux_loss
+
+        return output
+
     def get_batch_loss_metrics(
         self,
         model,
@@ -1310,60 +1463,75 @@ class _UnslothKTOTrainer(Trainer):
         metrics = {}
         batch = {k: (v.to(self.accelerator.device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
 
-        forward_output = self.forward(model, batch)
-        (
-            policy_chosen_logps,
-            policy_rejected_logps,
-            policy_chosen_logits,
-            policy_rejected_logits,
-            policy_KL_logps,
-        ) = forward_output[:5]
-        if self.aux_loss_enabled:
-            aux_loss = forward_output[5]
+        labels = torch.tensor(batch["label"])
+        num_chosen = labels.sum().to(self.accelerator.device)
+        num_rejected = (len(labels) - num_chosen).to(self.accelerator.device)
 
-        # if reference_logps in batch use them, otherwise use the reference model
-        if "reference_logps" in batch:
-            chosen_idx = [i for i in range(batch["reference_logps"].shape[0]) if batch["label"][i] is True]
-            rejected_idx = [i for i in range(batch["reference_logps"].shape[0]) if batch["label"][i] is False]
-
-            reference_chosen_logps = batch["reference_logps"][chosen_idx, ...]
-            reference_rejected_logps = batch["reference_logps"][rejected_idx, ...]
-            if self.calculate_KL:
-                reference_KL_logps = batch["reference_KL_logps"]
-            else:
-                reference_KL_logps = None
+        if self.args.use_liger_loss:
+            model_output = self._compute_loss_liger(model, batch)
+            losses = model_output["loss"]
+            policy_chosen_logits = model_output["chosen_logits_sum"]
+            policy_rejected_logits = model_output["rejected_logits_sum"]
+            policy_chosen_logps = model_output["chosen_logps_sum"]
+            policy_rejected_logps = model_output["rejected_logps_sum"]
+            chosen_rewards = model_output["chosen_rewards_sum"]
+            rejected_rewards = model_output["rejected_rewards_sum"]
+            kl = model_output["kl"]
+            if self.aux_loss_enabled:
+                aux_loss = model_output["aux_loss"]
         else:
-            with torch.no_grad():
-                if self.ref_model is None:
-                    with self.null_ref_context():
+            forward_output = self.forward(model, batch)
+            (
+                policy_chosen_logps,
+                policy_rejected_logps,
+                policy_chosen_logits,
+                policy_rejected_logits,
+                policy_KL_logps,
+            ) = forward_output[:5]
+            if self.aux_loss_enabled:
+                aux_loss = forward_output[5]
+
+            # if reference_logps in batch use them, otherwise use the reference model
+            if "reference_logps" in batch:
+                chosen_idx = [i for i in range(batch["reference_logps"].shape[0]) if batch["label"][i] is True]
+                rejected_idx = [i for i in range(batch["reference_logps"].shape[0]) if batch["label"][i] is False]
+
+                reference_chosen_logps = batch["reference_logps"][chosen_idx, ...]
+                reference_rejected_logps = batch["reference_logps"][rejected_idx, ...]
+                if self.calculate_KL:
+                    reference_KL_logps = batch["reference_KL_logps"]
+                else:
+                    reference_KL_logps = None
+            else:
+                with torch.no_grad():
+                    if self.ref_model is None:
+                        with self.null_ref_context():
+                            (
+                                reference_chosen_logps,
+                                reference_rejected_logps,
+                                _,
+                                _,
+                                reference_KL_logps,
+                            ) = self.forward(self.model, batch)[:5]
+                    else:
                         (
                             reference_chosen_logps,
                             reference_rejected_logps,
                             _,
                             _,
                             reference_KL_logps,
-                        ) = self.forward(self.model, batch)[:5]
-                else:
-                    (
-                        reference_chosen_logps,
-                        reference_rejected_logps,
-                        _,
-                        _,
-                        reference_KL_logps,
-                    ) = self.forward(self.ref_model, batch)[:5]
+                        ) = self.forward(self.ref_model, batch)[:5]
 
-        losses, chosen_rewards, rejected_rewards, kl = self.kto_loss(
-            policy_chosen_logps,
-            policy_rejected_logps,
-            policy_KL_logps,
-            reference_chosen_logps,
-            reference_rejected_logps,
-            reference_KL_logps,
-        )
+            losses, chosen_rewards, rejected_rewards, kl = self.kto_loss(
+                policy_chosen_logps,
+                policy_rejected_logps,
+                policy_KL_logps,
+                reference_chosen_logps,
+                reference_rejected_logps,
+                reference_KL_logps,
+            )
+
         metrics["kl"] = kl.item()
-
-        num_chosen = torch.Tensor([len(chosen_rewards)]).to(self.accelerator.device)
-        num_rejected = torch.Tensor([len(rejected_rewards)]).to(self.accelerator.device)
 
         all_num_chosen = self.accelerator.gather_for_metrics(num_chosen).sum().item()
         all_num_rejected = self.accelerator.gather_for_metrics(num_rejected).sum().item()
@@ -1405,7 +1573,9 @@ class _UnslothKTOTrainer(Trainer):
         return_outputs=False,
         num_items_in_batch=None,
     ) -> Union[torch.Tensor, tuple[torch.Tensor, dict[str, torch.Tensor]]]:
-        compute_loss_context_manager = amp.autocast("cuda") if self._peft_has_been_casted_to_bf16 else nullcontext()
+        compute_loss_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
 
         with compute_loss_context_manager:
             loss, metrics = self.get_batch_loss_metrics(model, inputs)
@@ -1424,17 +1594,21 @@ class _UnslothKTOTrainer(Trainer):
         for key, value in metrics.items():
             self._stored_metrics[train_eval][key].append(value)
 
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        if self.train_dataset is None or not has_length(self.train_dataset):
+    def _get_train_sampler(self, dataset: Optional[Dataset] = None) -> Optional[torch.utils.data.Sampler]:
+        if dataset is None:
+            dataset = self.train_dataset
+        if dataset is None or not has_length(dataset):
             return None
-        return SequentialSampler(self.train_dataset)
+        return SequentialSampler(dataset)
 
     def generate_from_model_and_ref(self, model, batch: dict[str, torch.LongTensor]) -> tuple[str, str]:
         """Generate samples from the model and reference model for the given batch of inputs."""
 
         # If one uses `generate_during_eval` with peft + bf16, we need to explicitly call generate with
-        # the torch cuda amp context manager as some hidden states are silently casted to full precision.
-        generate_context_manager = amp.autocast("cuda") if self._peft_has_been_casted_to_bf16 else nullcontext()
+        # the torch amp context manager as some hidden states are silently casted to full precision.
+        generate_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
 
         with generate_context_manager:
             policy_output = model.generate(
@@ -1488,7 +1662,9 @@ class _UnslothKTOTrainer(Trainer):
             else:
                 ignore_keys = []
 
-        prediction_context_manager = amp.autocast("cuda") if self._peft_has_been_casted_to_bf16 else nullcontext()
+        prediction_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
         with torch.no_grad(), prediction_context_manager:
             loss, metrics = self.get_batch_loss_metrics(model, inputs)
 
@@ -1500,13 +1676,13 @@ class _UnslothKTOTrainer(Trainer):
             return (loss.detach(), None, None)
 
         # logits for the chosen and rejected samples from model
-        logits_dict = {
-            "eval_logits/chosen": metrics["logits/chosen"],
-            "eval_logits/rejected": metrics["logits/rejected"],
-        }
-        logits = torch.tensor(
-            [v for k, v in logits_dict.items() if k not in ignore_keys], device=self.accelerator.device
-        )
+        logits_dict = {}
+        if "logits/chosen_sum" in metrics:
+            logits_dict["eval_logits/chosen"] = metrics["logits/chosen_sum"]
+        if "logits/rejected_sum" in metrics:
+            logits_dict["eval_logits/rejected"] = metrics["logits/rejected_sum"]
+        logits = [v for k, v in logits_dict.items() if k not in ignore_keys]
+        logits = torch.tensor(logits, device=self.accelerator.device)
         labels = torch.zeros(logits.shape[0], device=self.accelerator.device)
 
         return (loss.detach(), logits, labels)
@@ -1520,8 +1696,8 @@ class _UnslothKTOTrainer(Trainer):
         metric_key_prefix: str = "eval",
     ) -> EvalLoopOutput:
         """
-        Overriding built-in evaluation loop to store metrics for each batch.
-        Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
+        Overriding built-in evaluation loop to store metrics for each batch. Prediction/evaluation loop, shared by
+        `Trainer.evaluate()` and `Trainer.predict()`.
 
         Works both with or without labels.
         """
@@ -1601,11 +1777,16 @@ class _UnslothKTOTrainer(Trainer):
         for key, metrics in self._stored_metrics[train_eval].items():
             logs[f"{prefix}{key}"] = torch.Tensor(metrics).mean().item()
         del self._stored_metrics[train_eval]
+        return super().log(logs, start_time)
 
-        if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
-            return super().log(logs, start_time)
-        else:  # transformers<=4.46
-            return super().log(logs)
+    # Ensure the model card is saved along with the checkpoint
+    def _save_checkpoint(self, model, trial):
+        if self.args.hub_model_id is None:
+            model_name = Path(self.args.output_dir).name
+        else:
+            model_name = self.args.hub_model_id.split("/")[-1]
+        self.create_model_card(model_name=model_name)
+        super()._save_checkpoint(model, trial)
 
     def create_model_card(
         self,
@@ -1632,12 +1813,18 @@ class _UnslothKTOTrainer(Trainer):
         else:
             base_model = None
 
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
+        # normalize `tags` to a mutable set
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
+            tags = {tags}
+        else:
+            tags = set(tags)
 
         if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
+            tags.add("unsloth")
+
+        tags.update(self._tag_names)
 
         citation = textwrap.dedent("""\
         @article{ethayarajh2024kto,
@@ -1671,8 +1858,9 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
         model (`transformers.PreTrainedModel`):
             The model to train, preferably an `AutoModelForSequenceClassification`.
         ref_model (`PreTrainedModelWrapper`):
-            Hugging Face transformer model with a casual language modelling head. Used for implicit reward computation and loss. If no
-            reference model is provided, the trainer will create a reference model with the same architecture as the model to be optimized.
+            Hugging Face transformer model with a casual language modelling head. Used for implicit reward computation
+            and loss. If no reference model is provided, the trainer will create a reference model with the same
+            architecture as the model to be optimized.
         args (`KTOConfig`):
             The arguments to use for training.
         train_dataset (`datasets.Dataset`):
@@ -1684,10 +1872,12 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
             for the model, and it will be saved along the model to make it easier to rerun an interrupted training or
             reuse the fine-tuned model.
         data_collator (`transformers.DataCollator`, *optional*, defaults to `None`):
-            The data collator to use for training. If None is specified, the default data collator (`DPODataCollatorWithPadding`) will be used
-            which will pad the sequences to the maximum length of the sequences in the batch, given a dataset of paired sequences.
+            The data collator to use for training. If None is specified, the default data collator
+            (`DPODataCollatorWithPadding`) will be used which will pad the sequences to the maximum length of the
+            sequences in the batch, given a dataset of paired sequences.
         model_init (`Callable[[], transformers.PreTrainedModel]`):
-            The model initializer to use for training. If None is specified, the default model initializer will be used.
+            The model initializer to use for training. If None is specified, the default model initializer will be
+            used.
         callbacks (`list[transformers.TrainerCallback]`):
             The callbacks to use for training.
         optimizers (`tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`):
@@ -1695,10 +1885,11 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
         preprocess_logits_for_metrics (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`):
             The function to use to preprocess the logits before computing the metrics.
         peft_config (`dict`, defaults to `None`):
-            The PEFT configuration to use for training. If you pass a PEFT configuration, the model will be wrapped in a PEFT model.
+            The PEFT configuration to use for training. If you pass a PEFT configuration, the model will be wrapped in
+            a PEFT model.
         compute_metrics (`Callable[[EvalPrediction], dict]`, *optional*):
-            The function to use to compute the metrics. Must take a `EvalPrediction` and return
-            a dictionary string to metric values.
+            The function to use to compute the metrics. Must take a `EvalPrediction` and return a dictionary string to
+            metric values.
         model_adapter_name (`str`, defaults to `None`):
             Name of the train target PEFT adapter, when using LoRA with multiple adapters.
         ref_adapter_name (`str`, defaults to `None`):
@@ -1725,7 +1916,9 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
     ):
         if args is None: args = UnslothKTOConfig()
         use_bf16 = getattr(args, 'bf16', False)
+        if type(use_bf16) is not bool: use_bf16 = False
         use_fp16 = getattr(args, 'fp16', False)
+        if type(use_fp16) is not bool: use_fp16 = False
         force_float32 = False
         if os.environ.get('UNSLOTH_FORCE_FLOAT32', '0') == '1':
             print('Unsloth: Switching to float32 training since model cannot work with float16')
@@ -1760,7 +1953,9 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
             if eval_bsz == 8 and args.per_device_train_batch_size < eval_bsz: args.per_device_eval_batch_size = args.per_device_train_batch_size
             if getattr(args, 'eval_accumulation_steps', None) is None and ga_steps is not None: args.eval_accumulation_steps = ga_steps
         fp16_full_eval = getattr(args, 'fp16_full_eval', False)
+        if type(fp16_full_eval) is not bool: fp16_full_eval = False
         bf16_full_eval = getattr(args, 'bf16_full_eval', False)
+        if type(bf16_full_eval) is not bool: bf16_full_eval = False
         if args.fp16 and bf16_full_eval: args.bf16_full_eval = False; args.fp16_full_eval = True
         if args.bf16 and fp16_full_eval: args.bf16_full_eval = True; args.fp16_full_eval = False
         if force_float32:
@@ -1795,8 +1990,8 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
         from unsloth_zoo.vision_utils import UnslothVisionDataCollator
         if not isinstance(data_collator, UnslothVisionDataCollator):
             if isinstance(data_collator, DataCollatorForSeq2Seq) and 'labels' not in train_dataset.column_names:
-                data_collator = DataCollatorForLanguageModeling(__tokenizer, mlm = False)
-            elif isinstance(data_collator, DataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
+                data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer, mlm = False, mlm_probability = 0.0)
+            elif isinstance(data_collator, TransformersDataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
                 data_collator = DataCollatorForSeq2Seq(__tokenizer)
         else:
             if hasattr(args, 'remove_unused_columns'): args.remove_unused_columns = False
@@ -1807,7 +2002,7 @@ class UnslothKTOTrainer(_UnslothKTOTrainer):
                 if isinstance(data_collator, DataCollatorForSeq2Seq):
                     data_collator = DataCollatorForSeq2Seq(__tokenizer.tokenizer)
                 else:
-                    data_collator = DataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False)
+                    data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False, mlm_probability = 0.0)
         other_metrics = []
         
         from unsloth_zoo.logging_utils import PatchRLStatistics

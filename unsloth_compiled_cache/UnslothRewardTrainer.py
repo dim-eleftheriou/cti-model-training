@@ -1,15 +1,15 @@
 """
-2025.3.13
-2025.3.15
-4.49.0
-0.15.2
+2025.6.6
+2025.6.8
+4.53.0
+0.19.0
 __UNSLOTH_VERSIONING__
 """
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from trl.trainer.reward_trainer import (Any, BaseImageProcessor, Callable, DataCollator, Dataset, EvalPrediction, FeatureExtractionMixin, FrozenInstanceError, Optional, PartialState, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, RewardConfig, RewardDataCollatorWithPadding, RewardTrainer, Trainer, TrainerCallback, Union, _tokenize, compute_accuracy, decode_and_strip_padding, defaultdict, disable_dropout_in_model, gather_object, generate_model_card, get_comet_experiment_url, inspect, is_peft_available, is_wandb_available, log_table_to_comet_experiment, maybe_apply_chat_template, nested_detach, nn, os, pd, prepare_model_for_kbit_training, print_rich_table, replace, torch, warnings)
+from trl.trainer.reward_trainer import (Any, BaseImageProcessor, Callable, DataCollator, Dataset, EvalPrediction, FeatureExtractionMixin, FrozenInstanceError, Optional, PartialState, Path, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, RewardConfig, RewardDataCollatorWithPadding, RewardTrainer, Trainer, TrainerCallback, Union, _tokenize, compute_accuracy, decode_and_strip_padding, defaultdict, disable_dropout_in_model, gather_object, generate_model_card, get_comet_experiment_url, inspect, is_peft_available, is_rich_available, is_wandb_available, log_table_to_comet_experiment, maybe_apply_chat_template, nested_detach, nn, os, pd, prepare_model_for_kbit_training, print_rich_table, replace, torch, warnings, Optional, PeftModel, PreTrainedModel, Trainer, is_peft_available, os, torch)
 
 
 import os
@@ -20,7 +20,7 @@ import torch
 import numpy as np
 from contextlib import nullcontext
 from torch.nn import functional as F
-from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling
+from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling as TransformersDataCollatorForLanguageModeling
 
 torch_compile_options = {
     "epilogue_fusion"   : True,
@@ -45,6 +45,10 @@ class UnslothRewardConfig(RewardConfig):
     
     Configuration class for the [`RewardTrainer`].
 
+    This class includes only the parameters that are specific to Reward training. For a full list of training
+    arguments, please refer to the [`~transformers.TrainingArguments`] documentation. Note that default values in this
+    class may differ from those in [`~transformers.TrainingArguments`].
+
     Using [`~transformers.HfArgumentParser`] we can turn this class into
     [argparse](https://docs.python.org/3/library/argparse#module-argparse) arguments that can be specified on the
     command line.
@@ -61,8 +65,8 @@ class UnslothRewardConfig(RewardConfig):
             Coefficient to incentivize the reward model to output mean-zero rewards (proposed by
             https://huggingface.co/papers/2312.09244, Eq. 2). Recommended value: `0.01`.
         remove_unused_columns (`bool`, *optional*, defaults to `False`):
-            Whether to remove the columns that are not used by the model's forward pass. Can be `True` only if
-            the dataset is pretokenized.
+            Whether to remove the columns that are not used by the model's forward pass. Can be `True` only if the
+            dataset is pretokenized.
     
     """
     vllm_sampling_params: Optional[Any] = field(
@@ -175,12 +179,12 @@ class UnslothRewardConfig(RewardConfig):
         hub_token = None,
         hub_private_repo = None,
         hub_always_push = False,
+        hub_revision = None,
         gradient_checkpointing = False,
         gradient_checkpointing_kwargs = None,
         include_inputs_for_metrics = False,
         eval_do_concat_batches = True,
         fp16_backend = 'auto',
-        evaluation_strategy = None,
         push_to_hub_model_id = None,
         push_to_hub_organization = None,
         push_to_hub_token = None,
@@ -193,8 +197,6 @@ class UnslothRewardConfig(RewardConfig):
         torch_compile = False,
         torch_compile_backend = None,
         torch_compile_mode = None,
-        dispatch_batches = None,
-        split_batches = None,
         include_tokens_per_second = False,
         include_num_input_tokens_seen = False,
         neftune_noise_alpha = None,
@@ -202,8 +204,9 @@ class UnslothRewardConfig(RewardConfig):
         batch_eval_metrics = False,
         eval_on_start = False,
         use_liger_kernel = False,
+        liger_kernel_config = None,
         eval_use_gather_object = False,
-        average_tokens_across_devices = False,
+        average_tokens_across_devices = True,
         max_length = 1024,
         disable_dropout = True,
         dataset_num_proc = None,
@@ -322,12 +325,12 @@ class UnslothRewardConfig(RewardConfig):
             hub_token = hub_token,
             hub_private_repo = hub_private_repo,
             hub_always_push = hub_always_push,
+            hub_revision = hub_revision,
             gradient_checkpointing = gradient_checkpointing,
             gradient_checkpointing_kwargs = gradient_checkpointing_kwargs,
             include_inputs_for_metrics = include_inputs_for_metrics,
             eval_do_concat_batches = eval_do_concat_batches,
             fp16_backend = fp16_backend,
-            evaluation_strategy = evaluation_strategy,
             push_to_hub_model_id = push_to_hub_model_id,
             push_to_hub_organization = push_to_hub_organization,
             push_to_hub_token = push_to_hub_token,
@@ -340,8 +343,6 @@ class UnslothRewardConfig(RewardConfig):
             torch_compile = torch_compile,
             torch_compile_backend = torch_compile_backend,
             torch_compile_mode = torch_compile_mode,
-            dispatch_batches = dispatch_batches,
-            split_batches = split_batches,
             include_tokens_per_second = include_tokens_per_second,
             include_num_input_tokens_seen = include_num_input_tokens_seen,
             neftune_noise_alpha = neftune_noise_alpha,
@@ -349,6 +350,7 @@ class UnslothRewardConfig(RewardConfig):
             batch_eval_metrics = batch_eval_metrics,
             eval_on_start = eval_on_start,
             use_liger_kernel = use_liger_kernel,
+            liger_kernel_config = liger_kernel_config,
             eval_use_gather_object = eval_use_gather_object,
             average_tokens_across_devices = average_tokens_across_devices,
             max_length = max_length,
@@ -391,20 +393,23 @@ class _UnslothRewardTrainer(Trainer):
             args (`RewardConfig`):
                 The arguments to use for training.
             data_collator (`transformers.DataCollator`):
-                The data collator to use for training. If None is specified, the default data collator (`RewardDataCollatorWithPadding`) will be used
-                which will pad the sequences to the maximum length of the sequences in the batch, given a dataset of paired sequences.
+                The data collator to use for training. If None is specified, the default data collator
+                (`RewardDataCollatorWithPadding`) will be used which will pad the sequences to the maximum length of
+                the sequences in the batch, given a dataset of paired sequences.
             train_dataset (`datasets.Dataset`):
                 The dataset to use for training.
             eval_dataset (`datasets.Dataset`):
                 The dataset to use for evaluation.
             processing_class (`PreTrainedTokenizerBase` or `BaseImageProcessor` or `FeatureExtractionMixin` or `ProcessorMixin`, *optional*):
-                Processing class used to process the data. If provided, will be used to automatically process the inputs
-                for the model, and it will be saved along the model to make it easier to rerun an interrupted training or
-                reuse the fine-tuned model.
+                Processing class used to process the data. If provided, will be used to automatically process the
+                inputs for the model, and it will be saved along the model to make it easier to rerun an interrupted
+                training or reuse the fine-tuned model.
             model_init (`Callable[[], transformers.PreTrainedModel]`):
-                The model initializer to use for training. If None is specified, the default model initializer will be used.
+                The model initializer to use for training. If None is specified, the default model initializer will be
+                used.
             compute_metrics (`Callable[[transformers.EvalPrediction], dict]`, *optional* defaults to `compute_accuracy`):
-                The metrics to use for evaluation. If no metrics are specified, the default metric (`compute_accuracy`) will be used.
+                The metrics to use for evaluation. If no metrics are specified, the default metric (`compute_accuracy`)
+                will be used.
             callbacks (`list[transformers.TrainerCallback]`):
                 The callbacks to use for training.
             optimizers (`tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`):
@@ -412,7 +417,8 @@ class _UnslothRewardTrainer(Trainer):
             preprocess_logits_for_metrics (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`):
                 The function to use to preprocess the logits before computing the metrics.
             peft_config (`dict`, defaults to `None`):
-                The PEFT configuration to use for training. If you pass a PEFT configuration, the model will be wrapped in a PEFT model.
+                The PEFT configuration to use for training. If you pass a PEFT configuration, the model will be wrapped
+                in a PEFT model.
         """
         if not is_peft_available() and peft_config is not None:
             raise ValueError(
@@ -473,7 +479,7 @@ class _UnslothRewardTrainer(Trainer):
         else:
             self.use_reward_data_collator = False
 
-        # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
+        # The trainer estimates the number of FLOPs [floating-point operations] using the number of elements in the
         # input tensor associated with the key "input_ids". However, in Reward, the sampled data does not include the
         # "input_ids" key. Instead, the available keys are "input_ids_chosen" and "input_ids_rejected". As a result,
         # the trainer issues the warning: "Could not estimate the number of tokens of the input, floating-point
@@ -483,7 +489,7 @@ class _UnslothRewardTrainer(Trainer):
         model.warnings_issued["estimate_tokens"] = True
 
         if "input_ids_chosen" not in train_dataset.column_names:
-            with PartialState().local_main_process_first():
+            with PartialState().main_process_first():
                 fn_kwargs = {"tokenizer": processing_class}
                 train_dataset = train_dataset.map(maybe_apply_chat_template, fn_kwargs={"tokenizer": processing_class})
                 train_dataset = train_dataset.map(
@@ -629,7 +635,8 @@ class _UnslothRewardTrainer(Trainer):
                 break
         df = pd.DataFrame(table)
         if self.accelerator.process_index == 0:
-            print_rich_table(df[:num_print_samples])
+            if is_rich_available():
+                print_rich_table(df[:num_print_samples])
             if "wandb" in self.args.report_to:
                 import wandb
 
@@ -641,6 +648,15 @@ class _UnslothRewardTrainer(Trainer):
                     name="completions.csv",
                     table=df,
                 )
+
+    # Ensure the model card is saved along with the checkpoint
+    def _save_checkpoint(self, model, trial):
+        if self.args.hub_model_id is None:
+            model_name = Path(self.args.output_dir).name
+        else:
+            model_name = self.args.hub_model_id.split("/")[-1]
+        self.create_model_card(model_name=model_name)
+        super()._save_checkpoint(model, trial)
 
     def create_model_card(
         self,
@@ -667,12 +683,18 @@ class _UnslothRewardTrainer(Trainer):
         else:
             base_model = None
 
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
+        # normalize `tags` to a mutable set
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
+            tags = {tags}
+        else:
+            tags = set(tags)
 
         if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
+            tags.add("unsloth")
+
+        tags.update(self._tag_names)
 
         model_card = generate_model_card(
             base_model=base_model,
@@ -707,7 +729,9 @@ class UnslothRewardTrainer(_UnslothRewardTrainer):
     ):
         if args is None: args = UnslothRewardConfig()
         use_bf16 = getattr(args, 'bf16', False)
+        if type(use_bf16) is not bool: use_bf16 = False
         use_fp16 = getattr(args, 'fp16', False)
+        if type(use_fp16) is not bool: use_fp16 = False
         force_float32 = False
         if os.environ.get('UNSLOTH_FORCE_FLOAT32', '0') == '1':
             print('Unsloth: Switching to float32 training since model cannot work with float16')
@@ -742,7 +766,9 @@ class UnslothRewardTrainer(_UnslothRewardTrainer):
             if eval_bsz == 8 and args.per_device_train_batch_size < eval_bsz: args.per_device_eval_batch_size = args.per_device_train_batch_size
             if getattr(args, 'eval_accumulation_steps', None) is None and ga_steps is not None: args.eval_accumulation_steps = ga_steps
         fp16_full_eval = getattr(args, 'fp16_full_eval', False)
+        if type(fp16_full_eval) is not bool: fp16_full_eval = False
         bf16_full_eval = getattr(args, 'bf16_full_eval', False)
+        if type(bf16_full_eval) is not bool: bf16_full_eval = False
         if args.fp16 and bf16_full_eval: args.bf16_full_eval = False; args.fp16_full_eval = True
         if args.bf16 and fp16_full_eval: args.bf16_full_eval = True; args.fp16_full_eval = False
         if force_float32:
@@ -777,8 +803,8 @@ class UnslothRewardTrainer(_UnslothRewardTrainer):
         from unsloth_zoo.vision_utils import UnslothVisionDataCollator
         if not isinstance(data_collator, UnslothVisionDataCollator):
             if isinstance(data_collator, DataCollatorForSeq2Seq) and 'labels' not in train_dataset.column_names:
-                data_collator = DataCollatorForLanguageModeling(__tokenizer, mlm = False)
-            elif isinstance(data_collator, DataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
+                data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer, mlm = False, mlm_probability = 0.0)
+            elif isinstance(data_collator, TransformersDataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
                 data_collator = DataCollatorForSeq2Seq(__tokenizer)
         else:
             if hasattr(args, 'remove_unused_columns'): args.remove_unused_columns = False
@@ -789,7 +815,7 @@ class UnslothRewardTrainer(_UnslothRewardTrainer):
                 if isinstance(data_collator, DataCollatorForSeq2Seq):
                     data_collator = DataCollatorForSeq2Seq(__tokenizer.tokenizer)
                 else:
-                    data_collator = DataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False)
+                    data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False, mlm_probability = 0.0)
         other_metrics = []
         
         from unsloth_zoo.logging_utils import PatchRLStatistics

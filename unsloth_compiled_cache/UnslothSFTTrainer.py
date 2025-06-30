@@ -1,15 +1,15 @@
 """
-2025.3.13
-2025.3.15
-4.49.0
-0.15.2
+2025.6.6
+2025.6.8
+4.53.0
+0.19.0
 __UNSLOTH_VERSIONING__
 """
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from trl.trainer.sft_trainer import (Any, AutoModelForCausalLM, AutoTokenizer, BaseImageProcessor, Callable, ConstantLengthDataset, DataCollator, DataCollatorForLanguageModeling, Dataset, EvalPrediction, FeatureExtractionMixin, IterableDataset, Optional, PeftConfig, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SFTConfig, SFTTrainer, Trainer, TrainerCallback, TrainingArguments, Type, Union, dataclasses, defaultdict, deprecate_kwarg, generate_model_card, get_comet_experiment_url, get_peft_model, is_liger_kernel_available, is_peft_available, is_wandb_available, nn, os, pack_examples, peft, peft_module_casting_to_bf16, prepare_model_for_kbit_training, torch, transformers, version, warnings, Callable, ConstantLengthDataset, DataCollator, DataCollatorForLanguageModeling, Dataset, IterableDataset, Optional, Union, os, pack_examples, transformers, os)
+from trl.trainer.sft_trainer import (Any, AutoModelForCausalLM, AutoTokenizer, BaseImageProcessor, Callable, ConstantLengthDataset, DataCollator, DataCollatorForLanguageModeling, Dataset, EvalPrediction, FeatureExtractionMixin, IterableDataset, Optional, Path, PeftConfig, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SFTConfig, SFTTrainer, Trainer, TrainerCallback, TrainingArguments, Union, clone_chat_template, contextlib, dataclass, dataclasses, defaultdict, generate_model_card, get_act_offloading_ctx_manager, get_comet_experiment_url, get_peft_model, is_conversational, is_peft_available, is_wandb_available, nn, os, pad, peft, peft_module_casting_to_bf16, prepare_model_for_kbit_training, torch, version, warnings, Callable, ConstantLengthDataset, DataCollator, DataCollatorForLanguageModeling, Dataset, IterableDataset, Optional, Union, os, pad, Optional, PeftModel, PreTrainedModel, Trainer, is_peft_available, os, peft, torch, os)
 
 
 import os
@@ -20,7 +20,7 @@ import torch
 import numpy as np
 from contextlib import nullcontext
 from torch.nn import functional as F
-from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling
+from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling as TransformersDataCollatorForLanguageModeling
 
 torch_compile_options = {
     "epilogue_fusion"   : True,
@@ -45,8 +45,9 @@ class UnslothSFTConfig(SFTConfig):
     
     Configuration class for the [`SFTTrainer`].
 
-    Only the parameters specific to SFT training are listed here. For details on other parameters, refer to the
-    [`~transformers.TrainingArguments`] documentation.
+    This class includes only the parameters that are specific to SFT training. For a full list of training arguments,
+    please refer to the [`~transformers.TrainingArguments`] documentation. Note that default values in this class may
+    differ from those in [`~transformers.TrainingArguments`].
 
     Using [`~transformers.HfArgumentParser`] we can turn this class into
     [argparse](https://docs.python.org/3/library/argparse#module-argparse) arguments that can be specified on the
@@ -58,8 +59,11 @@ class UnslothSFTConfig(SFTConfig):
         model_init_kwargs (`dict[str, Any]` or `None`, *optional*, defaults to `None`):
             Keyword arguments for [`~transformers.AutoModelForCausalLM.from_pretrained`], used when the `model`
             argument of the [`SFTTrainer`] is provided as a string.
-        use_liger (`bool`, *optional*, defaults to `False`):
-            Monkey patch the model with Liger kernels to increase throughput and reduce memory usage.
+        chat_template_path (`str` or `None`, *optional*, defaults to `None`):
+            If specified, sets the model's chat template. This can either be the path to a tokenizer (local directory
+            or Hugging Face Hub model) or a direct path to a Jinja template file. When using a Jinja file, you must
+            ensure that any special tokens referenced in the template are added to the tokenizer and that the model's
+            embedding layer is resized accordingly.
 
         > Parameters that control the data preprocessing
 
@@ -70,21 +74,45 @@ class UnslothSFTConfig(SFTConfig):
             `skip_prepare_dataset`.
         dataset_num_proc (`int` or `None`, *optional*, defaults to `None`):
             Number of processes to use for processing the dataset.
-        max_seq_length (`int` or `None`, *optional*, defaults to `1024`):
-            Maximum length of the tokenized sequence. Sequences longer than `max_seq_length` are truncated from the
-            right.
+        eos_token (`str` or `None`, *optional*, defaults to `None`):
+            Token used to indicate the end of a turn or sequence. If `None`, it defaults to
+            `processing_class.eos_token`.
+        pad_token (`int` or `None`, *optional*, defaults to `None`):
+            Token used for padding. If `None`, it defaults to `processing_class.pad_token`, or if that is also `None`,
+            it falls back to `processing_class.eos_token`.
+        max_length (`int` or `None`, *optional*, defaults to `1024`):
+            Maximum length of the tokenized sequence. Sequences longer than `max_length` are truncated from the right.
             If `None`, no truncation is applied. When packing is enabled, this value sets the sequence length.
         packing (`bool`, *optional*, defaults to `False`):
-            Whether to pack multiple sequences into a fixed-length format. Uses `max_seq_length` to define sequence
-            length.
+            Whether to group multiple sequences into fixed-length blocks to improve computational efficiency and reduce
+            padding. Uses `max_length` to define sequence length.
+        packing_strategy (`str`, *optional*, defaults to `"ffd"`):
+            Strategy for packing sequences. Can be either `"ffd"` (first-fit decreasing, default), or `"wrapped"`.
+        padding_free (`bool`, *optional*, defaults to `False`):
+            Whether to perform forward passes without padding by flattening all sequences in the batch into a single
+            continuous sequence. This reduces memory usage by eliminating padding overhead. Currently, this is only
+            supported with the `flash_attention_2` attention implementation, which can efficiently handle the flattened
+            batch structure. When packing is enabled with strategy `"ffd"`, padding-free is enabled, regardless of the
+            value of this parameter.
+        pad_to_multiple_of (`int` or `None`, *optional*, defaults to `None`):
+            If set, the sequences will be padded to a multiple of this value.
         eval_packing (`bool` or `None`, *optional*, defaults to `None`):
             Whether to pack the eval dataset. If `None`, uses the same value as `packing`.
 
         > Parameters that control the training
 
-        learning_rate (`float`, *optional*, defaults to `2e-5`):
-            Initial learning rate for [`AdamW`] optimizer. The default value replaces that of
-            [`~transformers.TrainingArguments`].
+        completion_only_loss (`bool` or `None`, *optional*, defaults to `None`):
+            Whether to compute loss only on the completion part of the sequence. If set to `True`, loss is computed
+            only on the completion, which is supported only for [prompt-completion](#prompt-completion) datasets. If
+            `False`, loss is computed on the entire sequence. If `None` (default), the behavior depends on the dataset:
+            loss is computed on the completion for [prompt-completion](#prompt-completion) datasets, and on the full
+            sequence for [language modeling](#language-modeling) datasets.
+        assistant_only_loss (`bool`, *optional*, defaults to `False`):
+            Whether to compute loss only on the assistant part of the sequence. If set to `True`, loss is computed
+            only on the assistant responses, which is supported only for [conversational](#conversational) datasets. If `False`,
+            loss is computed on the entire sequence.
+        activation_offloading (`bool`, *optional*, defaults to `False`):
+            Whether to offload the activations to the CPU.
     
     """
     vllm_sampling_params: Optional[Any] = field(
@@ -197,12 +225,12 @@ class UnslothSFTConfig(SFTConfig):
         hub_token = None,
         hub_private_repo = None,
         hub_always_push = False,
+        hub_revision = None,
         gradient_checkpointing = False,
         gradient_checkpointing_kwargs = None,
         include_inputs_for_metrics = False,
         eval_do_concat_batches = True,
         fp16_backend = 'auto',
-        evaluation_strategy = None,
         push_to_hub_model_id = None,
         push_to_hub_organization = None,
         push_to_hub_token = None,
@@ -215,8 +243,6 @@ class UnslothSFTConfig(SFTConfig):
         torch_compile = False,
         torch_compile_backend = None,
         torch_compile_mode = None,
-        dispatch_batches = None,
-        split_batches = None,
         include_tokens_per_second = False,
         include_num_input_tokens_seen = False,
         neftune_noise_alpha = None,
@@ -224,19 +250,26 @@ class UnslothSFTConfig(SFTConfig):
         batch_eval_metrics = False,
         eval_on_start = False,
         use_liger_kernel = False,
+        liger_kernel_config = None,
         eval_use_gather_object = False,
-        average_tokens_across_devices = False,
+        average_tokens_across_devices = True,
         model_init_kwargs = None,
-        use_liger = False,
+        chat_template_path = None,
         dataset_text_field = 'text',
         dataset_kwargs = None,
         dataset_num_proc = None,
-        max_seq_length = None,
+        eos_token = None,
+        pad_token = None,
+        max_length = 1024,
         packing = False,
+        packing_strategy = 'ffd',
+        padding_free = False,
+        pad_to_multiple_of = None,
         eval_packing = None,
-        dataset_batch_size = None,
-        num_of_sequences = None,
-        chars_per_token = None,
+        completion_only_loss = None,
+        assistant_only_loss = False,
+        activation_offloading = False,
+        max_seq_length = None,
         vllm_sampling_params = None,
         unsloth_num_chunks = -1,
         **kwargs,
@@ -351,12 +384,12 @@ class UnslothSFTConfig(SFTConfig):
             hub_token = hub_token,
             hub_private_repo = hub_private_repo,
             hub_always_push = hub_always_push,
+            hub_revision = hub_revision,
             gradient_checkpointing = gradient_checkpointing,
             gradient_checkpointing_kwargs = gradient_checkpointing_kwargs,
             include_inputs_for_metrics = include_inputs_for_metrics,
             eval_do_concat_batches = eval_do_concat_batches,
             fp16_backend = fp16_backend,
-            evaluation_strategy = evaluation_strategy,
             push_to_hub_model_id = push_to_hub_model_id,
             push_to_hub_organization = push_to_hub_organization,
             push_to_hub_token = push_to_hub_token,
@@ -369,8 +402,6 @@ class UnslothSFTConfig(SFTConfig):
             torch_compile = torch_compile,
             torch_compile_backend = torch_compile_backend,
             torch_compile_mode = torch_compile_mode,
-            dispatch_batches = dispatch_batches,
-            split_batches = split_batches,
             include_tokens_per_second = include_tokens_per_second,
             include_num_input_tokens_seen = include_num_input_tokens_seen,
             neftune_noise_alpha = neftune_noise_alpha,
@@ -378,19 +409,26 @@ class UnslothSFTConfig(SFTConfig):
             batch_eval_metrics = batch_eval_metrics,
             eval_on_start = eval_on_start,
             use_liger_kernel = use_liger_kernel,
+            liger_kernel_config = liger_kernel_config,
             eval_use_gather_object = eval_use_gather_object,
             average_tokens_across_devices = average_tokens_across_devices,
             model_init_kwargs = model_init_kwargs,
-            use_liger = use_liger,
+            chat_template_path = chat_template_path,
             dataset_text_field = dataset_text_field,
             dataset_kwargs = dataset_kwargs,
             dataset_num_proc = dataset_num_proc,
-            max_seq_length = max_seq_length,
+            eos_token = eos_token,
+            pad_token = pad_token,
+            max_length = max_length,
             packing = packing,
+            packing_strategy = packing_strategy,
+            padding_free = padding_free,
+            pad_to_multiple_of = pad_to_multiple_of,
             eval_packing = eval_packing,
-            dataset_batch_size = dataset_batch_size,
-            num_of_sequences = num_of_sequences,
-            chars_per_token = chars_per_token,**kwargs)
+            completion_only_loss = completion_only_loss,
+            assistant_only_loss = assistant_only_loss,
+            activation_offloading = activation_offloading,
+            max_seq_length = max_seq_length,**kwargs)
         self.vllm_sampling_params = vllm_sampling_params
         self.unsloth_num_chunks = unsloth_num_chunks
 pass
@@ -400,9 +438,6 @@ class _UnslothSFTTrainer(Trainer):
 
     _tag_names = ["trl", "sft"]
 
-    @deprecate_kwarg(
-        "tokenizer", "0.16.0", "processing_class", warn_if_greater_or_equal_version=True, raise_if_both_names=True
-    )
     def __init__(
         self,
         model: Union[str, nn.Module, PreTrainedModel],
@@ -417,21 +452,36 @@ class _UnslothSFTTrainer(Trainer):
         compute_metrics: Optional[Callable[[EvalPrediction], dict]] = None,
         callbacks: Optional[list[TrainerCallback]] = None,
         optimizers: tuple[Optional[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler.LambdaLR]] = (None, None),
-        optimizer_cls_and_kwargs: Optional[tuple[Type[torch.optim.Optimizer], dict[str, Any]]] = None,
+        optimizer_cls_and_kwargs: Optional[tuple[type[torch.optim.Optimizer], dict[str, Any]]] = None,
         preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
         peft_config: Optional["PeftConfig"] = None,
-        formatting_func: Optional[Union[Callable[[dict], str], Callable[[dict], list[str]]]] = None,
+        formatting_func: Optional[Callable[[dict], str]] = None,
     ):
         # Args
+        model_id = model if isinstance(model, str) else model.config._name_or_path
         if args is None:
-            model_name = model if isinstance(model, str) else model.config._name_or_path
-            model_name = model_name.split("/")[-1]
+            model_name = model_id.split("/")[-1]
             args = SFTConfig(f"{model_name}-SFT")
         elif isinstance(args, TrainingArguments) and not isinstance(args, SFTConfig):
             dict_args = args.to_dict()
             dict_args["hub_token"] = args.hub_token  # to_dict hides the hub_token
             dict_args.pop("push_to_hub_token")
             args = SFTConfig(**dict_args)
+
+        # Handle the tokenizer
+        if processing_class is None:
+            processing_class = AutoTokenizer.from_pretrained(model_id)
+
+        if args.eos_token is not None:
+            eos_token = args.eos_token
+            eos_token_id = processing_class.convert_tokens_to_ids(eos_token)
+            if eos_token_id is None:
+                raise ValueError(
+                    f"The specified `eos_token` ('{eos_token}') is not found in the vocabulary of the given "
+                    f"`processing_class` ({processing_class.__class__.__name__}). Ensure that the `eos_token` exists "
+                    "in the vocabulary before using it as an EOS token."
+                )
+            processing_class.eos_token_id = eos_token_id
 
         # Model
         if args.model_init_kwargs is not None and not isinstance(model, str):
@@ -442,19 +492,99 @@ class _UnslothSFTTrainer(Trainer):
         if isinstance(model, str):
             model = self._create_model_from_path(model, args)
 
+        if args.chat_template_path is not None:
+            if os.path.isfile(args.chat_template_path) and args.chat_template_path.endswith((".jinja", ".j2")):
+                with open(args.chat_template_path, encoding="utf-8") as chat_template_file:
+                    processing_class.chat_template = chat_template_file.read()
+            else:
+                model, processing_class = clone_chat_template(model, processing_class, args.chat_template_path)
+
         # PEFT configuration and model wrapping
         if False:
             model = self._prepare_peft_model(model, peft_config, args)
 
-        # Handle the tokenizer
-        if processing_class is None:
-            processing_class = AutoTokenizer.from_pretrained(model.config._name_or_path)
-            if processing_class.pad_token is None:
-                processing_class.pad_token = processing_class.eos_token  # required for padding when collating data
+        # Data collator
+        # FFD packing requires padding-free mode; otherwise, the collator outputs padded attention masks, causing
+        # FlashAttention to ignore position_ids and recompute them incorrectly from the padded attention mask.
+        self.padding_free = args.padding_free or (args.packing and args.packing_strategy == "ffd")
+        if self.padding_free:
+            if data_collator is not None:
+                raise ValueError("Passing a custom data collator is not supported when using padding-free.")
+            if args.packing and args.packing_strategy == "wrapped":
+                warnings.warn(
+                    "You are passing `padding_free=True` with the 'wrapped' packing strategy, which is not "
+                    "recommended. Please refer to the documentation to understand why this is not recommended."
+                )
+            if model.config._attn_implementation != "flash_attention_2":
+                warnings.warn(
+                    "Padding-free training is enabled, but the attention implementation is not set to "
+                    "'flash_attention_2'. Padding-free training flattens batches into a single sequence, and "
+                    "'flash_attention_2' is the only known attention mechanism that reliably supports this. Using "
+                    "other implementations may lead to unexpected behavior. To ensure compatibility, set "
+                    "`attn_implementation='flash_attention_2'` in the model configuration, or verify that your "
+                    "attention mechanism can handle flattened sequences."
+                )
+            if args.per_device_train_batch_size == 1 and not args.packing:
+                warnings.warn(
+                    "You are using a per_device_train_batch_size of 1 with padding-free training. Using a batch size "
+                    "of 1 anihilate the benefits of padding-free training. Please consider increasing the batch size "
+                    "to at least 2."
+                )
+
+        if args.completion_only_loss is None:
+            first_example = next(iter(train_dataset))
+            self.completion_only_loss = "prompt" in first_example
+        else:
+            self.completion_only_loss = args.completion_only_loss
+
+        if data_collator is None:
+            # Get the pad token: if not provided, use the one from the processing class or the eos token
+            # if the processing class does not have a pad token.
+            pad_token = args.pad_token or processing_class.pad_token or processing_class.eos_token
+            pad_token_id = processing_class.convert_tokens_to_ids(pad_token)
+            if pad_token_id is None:
+                raise ValueError(
+                    f"The specified `pad_token` ('{pad_token}') is not found in the vocabulary of the given "
+                    f"`processing_class` ({processing_class.__class__.__name__}). Ensure that the `pad_token` exists "
+                    "in the vocabulary before using it as a padding token."
+                )
+            data_collator = DataCollatorForLanguageModeling(
+                pad_token_id=pad_token_id,
+                completion_only_loss=self.completion_only_loss,
+                padding_free=self.padding_free,
+                # Using position_ids without flash_attn hurts the training
+                return_position_ids=model.config._attn_implementation == "flash_attention_2",
+                pad_to_multiple_of=args.pad_to_multiple_of,
+            )
+
+        if (
+            args.packing
+            and args.packing_strategy == "ffd"
+            and model.config._attn_implementation != "flash_attention_2"
+        ):
+            warnings.warn(
+                "You are using packing, but the attention implementation is not set to 'flash_attention_2'. Packing "
+                "flattens batches into a single sequence, and 'flash_attention_2' is the only known attention "
+                "mechanism that reliably supports this. Using other implementations may lead to cross-contamination "
+                "between batches. To avoid this, either disable packing by setting `packing=False`, or set "
+                "`attn_implementation='flash_attention_2'` in the model configuration."
+            )
+        if args.assistant_only_loss and not is_conversational(train_dataset[0]):
+            raise ValueError(
+                "You set `assistant_only_loss=True`, but the dataset is not conversational. This option is only "
+                "supported for conversational datasets."
+            )
 
         # Dataset
         preprocess_dataset = args.dataset_kwargs is None or not args.dataset_kwargs.get("skip_prepare_dataset", False)
         if preprocess_dataset:
+            if self.completion_only_loss and formatting_func:
+                raise ValueError(
+                    "A formatting function was provided while `completion_only_loss=True`, which is incompatible. "
+                    "Using a formatter converts the dataset to a language modeling type, conflicting with "
+                    "completion-only loss. To resolve this, apply your formatting function before passing the "
+                    "dataset, or disable `completion_only_loss` in `SFTConfig`."
+                )
             train_dataset = self._prepare_dataset(
                 train_dataset, processing_class, args, args.packing, formatting_func, "train"
             )
@@ -470,29 +600,16 @@ class _UnslothSFTTrainer(Trainer):
                         eval_dataset, processing_class, args, packing, formatting_func, "eval"
                     )
 
-        # Data collator
-        if data_collator is None:
-            data_collator = DataCollatorForLanguageModeling(tokenizer=processing_class, mlm=False)
-
         # Initialize the metrics
-        self._metrics = defaultdict(list)
+        self._metrics = {"train": defaultdict(list), "eval": defaultdict(list)}
+        self._total_train_tokens = 0
 
         # Initialize the Trainer. Parent class will handle:
-        # - DeepSpeed configuration (through create_accelerator_and_postprocess)
+        # - DeepSpeed configuration [through create_accelerator_and_postprocess]
         # - FSDP setup
         # - Distributed training setup
         # - Optimizer and scheduler creation
-        # Some arguments are only available for transformers>=4.47.0. Can be removed when the min version is bumped.
-        super_init_kwargs = {}
-        if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
-            super_init_kwargs["optimizer_cls_and_kwargs"] = optimizer_cls_and_kwargs
-        else:
-            if optimizer_cls_and_kwargs is not None:
-                warnings.warn(
-                    "The `optimizer_cls_and_kwargs` argument is only available for `transformers>=4.47.0`. "
-                    "The default optimizer will be used. "
-                    "Remove the `optimizer_cls_and_kwargs` or upgrade to `transformers>=4.47.0`."
-                )
+
         super().__init__(
             model=model,
             args=args,
@@ -504,9 +621,15 @@ class _UnslothSFTTrainer(Trainer):
             compute_metrics=compute_metrics,
             callbacks=callbacks,
             optimizers=optimizers,
+            optimizer_cls_and_kwargs=optimizer_cls_and_kwargs,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-            **super_init_kwargs,
         )
+
+        # Initialize activation offloading context
+        if self.args.activation_offloading:
+            self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
+        else:
+            self.maybe_activation_offload_context = contextlib.nullcontext()
 
         # Add tags for models that have been loaded with the correct transformers version
         if hasattr(self.model, "add_model_tags"):
@@ -528,16 +651,11 @@ class _UnslothSFTTrainer(Trainer):
                 f"a `torch.dtype` (e.g., 'float32'), but got {torch_dtype}."
             )
         # Disable caching if gradient checkpointing is enabled (not supported)
-        if args.gradient_checkpointing:
-            model_init_kwargs["use_cache"] = False
+        # if args.gradient_checkpointing:
+        #     model_init_kwargs["use_cache"] = False
 
         # Create model
-        if args.use_liger:
-            if not is_liger_kernel_available():
-                raise ImportError("Please install Liger-kernel for use_liger=True")
-            model = AutoLigerKernelForCausalLM.from_pretrained(model_path, **model_init_kwargs)
-        else:
-            model = AutoModelForCausalLM.from_pretrained(model_path, **model_init_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(model_path, **model_init_kwargs)
         return model
 
     def _prepare_peft_model(self, model: PreTrainedModel, peft_config: Any, args: SFTConfig) -> PreTrainedModel:
@@ -678,14 +796,14 @@ class _UnslothSFTTrainer(Trainer):
         if do_tokenize:
             # Check double BOS tokens
             if do_formatting_func:
-                test_text = formatting_func(dataset[0])
+                test_text = formatting_func(next(iter(dataset)))
                 if not isinstance(test_text, list):
                     raise ValueError(
                         "Unsloth: The `formatting_func` should return a list of processed strings."
                     )
                 test_text = test_text[0]
             else:
-                test_text = dataset[0][dataset_text_field]
+                test_text = next(iter(dataset))[dataset_text_field][0]
     
             # Get chat template
             chat_template = getattr(processing_class, 'chat_template', '')
@@ -717,7 +835,11 @@ class _UnslothSFTTrainer(Trainer):
                 )
             pass
     
-            map_kwargs["num_proc"] = getattr(args, "dataset_num_proc", 2)
+            if not isinstance(dataset, IterableDataset):
+                map_kwargs["num_proc"] = getattr(args, "dataset_num_proc", 2)
+            else:
+                map_kwargs["batch_size"] = dataset._ex_iterable.batch_size
+                
             if use_desc: map_kwargs["desc"] = f'Unsloth: Tokenizing ["{dataset_text_field}"]'
             dataset = dataset.map(_tokenize, batched = True, **map_kwargs)
     
@@ -744,6 +866,20 @@ class _UnslothSFTTrainer(Trainer):
         pass
         return dataset
     
+    def _set_signature_columns_if_needed(self):
+        # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
+        # By default, this method sets `self._signature_columns` to the model's expected inputs (usually, "input_ids"
+        # and "attention_mask"). When using `train_on_completion_only` we add a "completion_mask" column to the
+        # dataset. So we need to override the default signature columns to include "completion_mask" as well.
+        if self._signature_columns is None:
+            self._signature_columns = [
+                "input_ids",
+                "labels",
+                "position_ids",
+                "completion_mask",
+                "assistant_masks",
+            ]
+
     def compute_loss(self, model, inputs, return_outputs = False, num_items_in_batch = None):
         outputs = super().compute_loss(
             model,
@@ -753,20 +889,32 @@ class _UnslothSFTTrainer(Trainer):
         )
         return outputs
 
+    # Override training step to add activation offloading context.
+    def training_step(self, *args, **kwargs):
+        with self.maybe_activation_offload_context:
+            return super().training_step(*args, **kwargs)
+
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
-        metrics = {key: sum(val) / len(val) for key, val in self._metrics.items()}  # average the metrics
+        mode = "train" if self.model.training else "eval"
+        metrics = {key: sum(val) / len(val) for key, val in self._metrics[mode].items()}  # average the metrics
 
         # This method can be called both in training and evaluation. When called in evaluation, the keys in `logs`
         # start with "eval_". We need to add the prefix "eval_" to the keys in `metrics` to match the format.
-        if next(iter(logs.keys())).startswith("eval_"):
+        if mode == "eval":
             metrics = {f"eval_{key}": val for key, val in metrics.items()}
 
         logs = {**logs, **metrics}
-        if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
-            super().log(logs, start_time)
-        else:  # transformers<=4.46
-            super().log(logs)
-        self._metrics.clear()
+        super().log(logs, start_time)
+        self._metrics[mode].clear()
+
+    # Ensure the model card is saved along with the checkpoint
+    def _save_checkpoint(self, model, trial):
+        if self.args.hub_model_id is None:
+            model_name = Path(self.args.output_dir).name
+        else:
+            model_name = self.args.hub_model_id.split("/")[-1]
+        self.create_model_card(model_name=model_name)
+        super()._save_checkpoint(model, trial)
 
     def create_model_card(
         self,
@@ -793,19 +941,25 @@ class _UnslothSFTTrainer(Trainer):
         else:
             base_model = None
 
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
+        # normalize `tags` to a mutable set
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
+            tags = {tags}
+        else:
+            tags = set(tags)
 
         if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
+            tags.add("unsloth")
+
+        tags.update(self._tag_names)
 
         model_card = generate_model_card(
             base_model=base_model,
             model_name=model_name,
             hub_model_id=self.hub_model_id,
             dataset_name=dataset_name,
-            tags=tags,
+            tags=list(tags),
             wandb_url=wandb.run.get_url() if is_wandb_available() and wandb.run is not None else None,
             comet_url=get_comet_experiment_url(),
             trainer_name="SFT",
@@ -835,19 +989,17 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
         model (`Union[str, PreTrainedModel]`):
             Model to be trained. Can be either:
 
-            - A string, being the *model id* of a pretrained model hosted inside a model repo on huggingface.co, or
-              a path to a *directory* containing model weights saved using
-              [`~transformers.PreTrainedModel.save_pretrained`], e.g., `'./my_model_directory/'`. The model is
-              loaded using [`~transformers.AutoModelForCausalLM.from_pretrained`] with the keywork arguments
-              in `args.model_init_kwargs`.
+            - A string, being the *model id* of a pretrained model hosted inside a model repo on huggingface.co, or a
+              path to a *directory* containing model weights saved using
+              [`~transformers.PreTrainedModel.save_pretrained`], e.g., `'./my_model_directory/'`. The model is loaded
+              using [`~transformers.AutoModelForCausalLM.from_pretrained`] with the keyword arguments in
+              `args.model_init_kwargs`.
             - A [`~transformers.PreTrainedModel`] object. Only causal language models are supported.
         args ([`SFTConfig`], *optional*, defaults to `None`):
             Configuration for this trainer. If `None`, a default configuration is used.
         data_collator (`DataCollator`, *optional*):
-            Function to use to form a batch from a list of elements of the prcessed `train_dataset` or `eval_dataset`.
-            Will default to [`~transformers.default_data_collator`] if no `processing_class` is provided, an instance
-            of [`~transformers.DataCollatorWithPadding`] otherwise if the processing_class is a feature extractor or
-            tokenizer.
+            Function to use to form a batch from a list of elements of the processed `train_dataset` or `eval_dataset`.
+            Will default to a custom [`DataCollatorForLanguageModeling`].
         train_dataset ([`~datasets.Dataset`] or [`~datasets.IterableDataset`]):
             Dataset to use for training. SFT supports both [language modeling](#language-modeling) type and
             [prompt-completion](#prompt-completion) type. The format of the samples can be either:
@@ -863,8 +1015,8 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
             Processing class used to process the data. If `None`, the processing class is loaded from the model's name
             with [`~transformers.AutoTokenizer.from_pretrained`].
         callbacks (list of [`~transformers.TrainerCallback`], *optional*, defaults to `None`):
-            List of callbacks to customize the training loop. Will add those to the list of default callbacks
-            detailed in [here](https://huggingface.co/docs/transformers/main_classes/callback).
+            List of callbacks to customize the training loop. Will add those to the list of default callbacks detailed
+            in [here](https://huggingface.co/docs/transformers/main_classes/callback).
 
             If you want to remove one of the default callbacks used, use the [`~transformers.Trainer.remove_callback`]
             method.
@@ -872,10 +1024,11 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
             A tuple containing the optimizer and the scheduler to use. Will default to an instance of [`AdamW`] on your
             model and a scheduler given by [`get_linear_schedule_with_warmup`] controlled by `args`.
         optimizer_cls_and_kwargs (`Tuple[Type[torch.optim.Optimizer], Dict[str, Any]]`, *optional*, defaults to `None`):
-            A tuple containing the optimizer class and keyword arguments to use.
-            Overrides `optim` and `optim_args` in `args`. Incompatible with the `optimizers` argument.
+            A tuple containing the optimizer class and keyword arguments to use. Overrides `optim` and `optim_args` in
+            `args`. Incompatible with the `optimizers` argument.
 
-            Unlike `optimizers`, this argument avoids the need to place model parameters on the correct devices before initializing the Trainer.
+            Unlike `optimizers`, this argument avoids the need to place model parameters on the correct devices before
+            initializing the Trainer.
         preprocess_logits_for_metrics (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`, *optional*, defaults to `None`):
             A function that preprocess the logits right before caching them at each evaluation step. Must take two
             tensors, the logits and the labels, and return the logits once processed as desired. The modifications made
@@ -885,7 +1038,8 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
         peft_config ([`~peft.PeftConfig`], *optional*, defaults to `None`):
             PEFT configuration used to wrap the model. If `None`, the model is not wrapped.
         formatting_func (`Optional[Callable]`):
-            Formatting function applied to the dataset before tokenization.
+            Formatting function applied to the dataset before tokenization. Applying the formatting function explicitly
+            converts the dataset into a [language modeling](#language-modeling) type.
     
     """
     def __init__(
@@ -907,7 +1061,9 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
     ):
         if args is None: args = UnslothSFTConfig()
         use_bf16 = getattr(args, 'bf16', False)
+        if type(use_bf16) is not bool: use_bf16 = False
         use_fp16 = getattr(args, 'fp16', False)
+        if type(use_fp16) is not bool: use_fp16 = False
         force_float32 = False
         if os.environ.get('UNSLOTH_FORCE_FLOAT32', '0') == '1':
             print('Unsloth: Switching to float32 training since model cannot work with float16')
@@ -942,7 +1098,9 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
             if eval_bsz == 8 and args.per_device_train_batch_size < eval_bsz: args.per_device_eval_batch_size = args.per_device_train_batch_size
             if getattr(args, 'eval_accumulation_steps', None) is None and ga_steps is not None: args.eval_accumulation_steps = ga_steps
         fp16_full_eval = getattr(args, 'fp16_full_eval', False)
+        if type(fp16_full_eval) is not bool: fp16_full_eval = False
         bf16_full_eval = getattr(args, 'bf16_full_eval', False)
+        if type(bf16_full_eval) is not bool: bf16_full_eval = False
         if args.fp16 and bf16_full_eval: args.bf16_full_eval = False; args.fp16_full_eval = True
         if args.bf16 and fp16_full_eval: args.bf16_full_eval = True; args.fp16_full_eval = False
         if force_float32:
@@ -967,6 +1125,28 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
             if args_max_seq_length is None and model_max_seq_length is not None:
                 max_seq_length = model.max_seq_length
                 if hasattr(args, 'max_seq_length'): args.max_seq_length = max_seq_length
+        if 'max_length' not in locals() and not hasattr(args, 'max_length'):
+            pass
+        else:
+            if hasattr(args, 'max_seq_length') and args.max_seq_length is not None and args.max_seq_length > 0:
+                if hasattr(args, 'max_length'):
+                    args.max_length = args.max_seq_length
+                    max_length = args.max_length
+            else:
+                model_max_length = getattr(model, 'max_seq_length', None)
+                # print(model_max_length, 'mml1')
+                if model_max_length is None: model_max_length = getattr(model, 'max_length', None)
+                # print(model_max_length, 'mml2')
+                if model_max_length is not None:
+                    args.max_length = model_max_length
+                    max_length = args.max_length
+                elif hasattr(args, 'max_length') and args.max_length is not None:
+                    max_length = args.max_length
+                    # if we are here, then we are in a weird case where max_length is set but max_seq_length is not set
+                    setattr(model, 'max_seq_length', max_length)
+                else:
+                    print('Unsloth: We did not find `max_seq_length` or `max_length` in the model or args. We will set it to 1024.')
+                    args.max_length = 1024
         if model is not None and hasattr(model, 'for_training'):
             model.for_training()
         if 'tokenizer' in locals() and hasattr(tokenizer, 'padding_side'): tokenizer.padding_side = 'right'
@@ -977,8 +1157,8 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
         from unsloth_zoo.vision_utils import UnslothVisionDataCollator
         if not isinstance(data_collator, UnslothVisionDataCollator):
             if isinstance(data_collator, DataCollatorForSeq2Seq) and 'labels' not in train_dataset.column_names:
-                data_collator = DataCollatorForLanguageModeling(__tokenizer, mlm = False)
-            elif isinstance(data_collator, DataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
+                data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer, mlm = False, mlm_probability = 0.0)
+            elif isinstance(data_collator, TransformersDataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
                 data_collator = DataCollatorForSeq2Seq(__tokenizer)
         else:
             if hasattr(args, 'remove_unused_columns'): args.remove_unused_columns = False
@@ -989,7 +1169,7 @@ class UnslothSFTTrainer(_UnslothSFTTrainer):
                 if isinstance(data_collator, DataCollatorForSeq2Seq):
                     data_collator = DataCollatorForSeq2Seq(__tokenizer.tokenizer)
                 else:
-                    data_collator = DataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False)
+                    data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False, mlm_probability = 0.0)
         other_metrics = []
         
         from unsloth_zoo.logging_utils import PatchRLStatistics

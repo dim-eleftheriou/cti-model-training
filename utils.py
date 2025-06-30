@@ -80,13 +80,13 @@ def save_model(model, tokenizer, save_args):
 
     # Online saving in pt
     if save_args["push_to_hub"]:
-        model.push_to_hub(f"{save_args["online_directory"]}/{save_args["online_name"]}")
-        tokenizer.push_to_hub(f"{save_args["online_directory"]}/{save_args["online_name"]}")
+        model.push_to_hub(f"{save_args['online_directory']}/{save_args['online_name']}")
+        tokenizer.push_to_hub(f"{save_args['online_directory']}/{save_args['online_name']}")
 
     # Online saving in GGUF
     if save_args["push_to_hub_gguf"]:
         model.push_to_hub_gguf(
-            f"{save_args["online_directory"]}/{save_args["online_name"]}-GGUF",
+            f"{save_args['online_directory']}/{save_args['online_name']}-GGUF",
             tokenizer,
             quantization_method = save_args["quantization_method_gguf"],
         )

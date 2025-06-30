@@ -1,15 +1,15 @@
 """
-2025.3.13
-2025.3.15
-4.49.0
-0.15.2
+2025.6.6
+2025.6.8
+4.53.0
+0.19.0
 __UNSLOTH_VERSIONING__
 """
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from trl.trainer.xpo_trainer import (Any, BaseImageProcessor, BasePairwiseJudge, Callable, Dataset, EvalPrediction, F, FeatureExtractionMixin, IterableDataset, OnlineDPOTrainer, OptimizerNames, Optional, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SIMPLE_CHAT_TEMPLATE, TrainerCallback, Union, XPOConfig, XPOTrainer, empty_cache, generate_model_card, get_comet_experiment_url, get_reward, is_conversational, is_wandb_available, jinja2, maybe_apply_chat_template, nn, os, textwrap, torch, truncate_right, unwrap_model_for_generation)
+from trl.trainer.xpo_trainer import (Any, BaseImageProcessor, BasePairwiseJudge, Callable, Dataset, EvalPrediction, F, FeatureExtractionMixin, IterableDataset, OnlineDPOTrainer, OptimizerNames, Optional, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SIMPLE_CHAT_TEMPLATE, TrainerCallback, Union, XPOConfig, XPOTrainer, empty_cache, generate_model_card, get_comet_experiment_url, get_reward, is_conversational, is_peft_available, is_wandb_available, jinja2, maybe_apply_chat_template, nn, os, textwrap, torch, truncate_right, unwrap_model_for_generation)
 
 
 import os
@@ -20,7 +20,7 @@ import torch
 import numpy as np
 from contextlib import nullcontext
 from torch.nn import functional as F
-from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling
+from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling as TransformersDataCollatorForLanguageModeling
 
 torch_compile_options = {
     "epilogue_fusion"   : True,
@@ -163,12 +163,12 @@ class UnslothXPOConfig(XPOConfig):
         hub_token = None,
         hub_private_repo = None,
         hub_always_push = False,
+        hub_revision = None,
         gradient_checkpointing = False,
         gradient_checkpointing_kwargs = None,
         include_inputs_for_metrics = False,
         eval_do_concat_batches = True,
         fp16_backend = 'auto',
-        evaluation_strategy = None,
         push_to_hub_model_id = None,
         push_to_hub_organization = None,
         push_to_hub_token = None,
@@ -181,8 +181,6 @@ class UnslothXPOConfig(XPOConfig):
         torch_compile = False,
         torch_compile_backend = None,
         torch_compile_mode = None,
-        dispatch_batches = None,
-        split_batches = None,
         include_tokens_per_second = False,
         include_num_input_tokens_seen = False,
         neftune_noise_alpha = None,
@@ -190,6 +188,7 @@ class UnslothXPOConfig(XPOConfig):
         batch_eval_metrics = False,
         eval_on_start = False,
         use_liger_kernel = False,
+        liger_kernel_config = None,
         eval_use_gather_object = False,
         average_tokens_across_devices = False,
         reward_model_path = None,
@@ -202,6 +201,7 @@ class UnslothXPOConfig(XPOConfig):
         dataset_num_proc = None,
         disable_dropout = True,
         use_vllm = False,
+        gpu_memory_utilization = 0.55,
         ds3_gather_for_generation = True,
         vllm_sampling_params = None,
         unsloth_num_chunks = -1,
@@ -215,6 +215,11 @@ class UnslothXPOConfig(XPOConfig):
         if dataset_num_proc is None:
             from multiprocessing import cpu_count
             dataset_num_proc = cpu_count()
+        if temperature <= 0:
+            raise MathError('Unsloth: Please set a positive non-zero temperature since your results will be wrong.')
+        elif temperature >= 10:
+            raise MathError('Unsloth: Please set a positive non-zero temperature less than 10, since sampling will be quite erratic.')
+        
         
         super().__init__(
             output_dir = output_dir,
@@ -317,12 +322,12 @@ class UnslothXPOConfig(XPOConfig):
             hub_token = hub_token,
             hub_private_repo = hub_private_repo,
             hub_always_push = hub_always_push,
+            hub_revision = hub_revision,
             gradient_checkpointing = gradient_checkpointing,
             gradient_checkpointing_kwargs = gradient_checkpointing_kwargs,
             include_inputs_for_metrics = include_inputs_for_metrics,
             eval_do_concat_batches = eval_do_concat_batches,
             fp16_backend = fp16_backend,
-            evaluation_strategy = evaluation_strategy,
             push_to_hub_model_id = push_to_hub_model_id,
             push_to_hub_organization = push_to_hub_organization,
             push_to_hub_token = push_to_hub_token,
@@ -335,8 +340,6 @@ class UnslothXPOConfig(XPOConfig):
             torch_compile = torch_compile,
             torch_compile_backend = torch_compile_backend,
             torch_compile_mode = torch_compile_mode,
-            dispatch_batches = dispatch_batches,
-            split_batches = split_batches,
             include_tokens_per_second = include_tokens_per_second,
             include_num_input_tokens_seen = include_num_input_tokens_seen,
             neftune_noise_alpha = neftune_noise_alpha,
@@ -344,6 +347,7 @@ class UnslothXPOConfig(XPOConfig):
             batch_eval_metrics = batch_eval_metrics,
             eval_on_start = eval_on_start,
             use_liger_kernel = use_liger_kernel,
+            liger_kernel_config = liger_kernel_config,
             eval_use_gather_object = eval_use_gather_object,
             average_tokens_across_devices = average_tokens_across_devices,
             reward_model_path = reward_model_path,
@@ -356,6 +360,7 @@ class UnslothXPOConfig(XPOConfig):
             dataset_num_proc = dataset_num_proc,
             disable_dropout = disable_dropout,
             use_vllm = use_vllm,
+            gpu_memory_utilization = gpu_memory_utilization,
             ds3_gather_for_generation = ds3_gather_for_generation,**kwargs)
         self.vllm_sampling_params = vllm_sampling_params
         self.unsloth_num_chunks = unsloth_num_chunks
@@ -440,16 +445,26 @@ class _UnslothXPOTrainer(OnlineDPOTrainer):
             return self._alpha
 
     def _generate_completions(self, prompts, model):
-        with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
-            model_output = unwrapped_model.generate(
+        with unwrap_model_for_generation(model, self.accelerator) as unwrapped_policy_model_for_gen:
+            model_output = unwrapped_policy_model_for_gen.generate(
                 input_ids=prompts["input_ids"],
                 attention_mask=prompts["attention_mask"],
                 generation_config=self.generation_config,
             )
 
-        ref_model = model if self.ref_model is None else self.ref_model
-        with torch.no_grad(), unwrap_model_for_generation(ref_model, self.accelerator) as unwrapped_ref_model:
-            ref_output = unwrapped_ref_model.generate(
+        actual_model_for_ref_generation: torch.nn.Module
+        if self.ref_model is None:
+            unwrapped_main_model_for_ref_logic = self.accelerator.unwrap_model(model)
+
+            if is_peft_available() and isinstance(unwrapped_main_model_for_ref_logic, PeftModel):
+                actual_model_for_ref_generation = unwrapped_main_model_for_ref_logic.get_base_model()
+            else:
+                actual_model_for_ref_generation = unwrapped_main_model_for_ref_logic
+        else:
+            actual_model_for_ref_generation = self.accelerator.unwrap_model(self.ref_model)
+
+        with unwrap_model_for_generation(actual_model_for_ref_generation, self.accelerator) as final_ref_model_for_gen:
+            ref_output = final_ref_model_for_gen.generate(
                 input_ids=prompts["input_ids"],
                 attention_mask=prompts["attention_mask"],
                 generation_config=self.generation_config,
@@ -806,12 +821,18 @@ class _UnslothXPOTrainer(OnlineDPOTrainer):
         else:
             base_model = None
 
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
+        # normalize `tags` to a mutable set
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
+            tags = {tags}
+        else:
+            tags = set(tags)
 
         if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
+            tags.add("unsloth")
+
+        tags.update(self._tag_names)
 
         citation = textwrap.dedent("""\
         @article{jung2024binary,
@@ -845,8 +866,9 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
         model (`transformers.PreTrainedModel`):
             The model to train, preferably an `AutoModelForCausalLM`.
         ref_model (`PreTrainedModelWrapper`):
-            Hugging Face transformer model with a casual language modelling head. Used for implicit reward computation and loss. If no
-            reference model is provided, the trainer will create a reference model with the same architecture as the model to be optimized.
+            Hugging Face transformer model with a casual language modelling head. Used for implicit reward computation
+            and loss. If no reference model is provided, the trainer will create a reference model with the same
+            architecture as the model to be optimized.
         reward_model (`transformers.PreTrainedModel`):
             The reward model to score completions with, preferably an `AutoModelForSequenceClassification`.
         judge (`BasePairwiseJudge`):
@@ -854,8 +876,9 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
         args (`XPOConfig`):
             The XPO config arguments to use for training.
         data_collator (`transformers.DataCollator`):
-            The data collator to use for training. If None is specified, the default data collator (`DPODataCollatorWithPadding`) will be used
-            which will pad the sequences to the maximum length of the sequences in the batch, given a dataset of paired sequences.
+            The data collator to use for training. If None is specified, the default data collator
+            (`DPODataCollatorWithPadding`) will be used which will pad the sequences to the maximum length of the
+            sequences in the batch, given a dataset of paired sequences.
         train_dataset (`datasets.Dataset`):
             The dataset to use for training.
         eval_dataset (`datasets.Dataset`):
@@ -867,8 +890,8 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
         peft_config (`dict`):
             The peft config to use for training.
         compute_metrics (`Callable[[EvalPrediction], dict]`, *optional*):
-            The function to use to compute the metrics. Must take a `EvalPrediction` and return
-            a dictionary string to metric values.
+            The function to use to compute the metrics. Must take a `EvalPrediction` and return a dictionary string to
+            metric values.
         callbacks (`list[transformers.TrainerCallback]`):
             The callbacks to use for training.
         optimizers (`tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`):
@@ -896,7 +919,9 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
     ):
         if args is None: args = UnslothXPOConfig()
         use_bf16 = getattr(args, 'bf16', False)
+        if type(use_bf16) is not bool: use_bf16 = False
         use_fp16 = getattr(args, 'fp16', False)
+        if type(use_fp16) is not bool: use_fp16 = False
         force_float32 = False
         if os.environ.get('UNSLOTH_FORCE_FLOAT32', '0') == '1':
             print('Unsloth: Switching to float32 training since model cannot work with float16')
@@ -931,7 +956,9 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
             if eval_bsz == 8 and args.per_device_train_batch_size < eval_bsz: args.per_device_eval_batch_size = args.per_device_train_batch_size
             if getattr(args, 'eval_accumulation_steps', None) is None and ga_steps is not None: args.eval_accumulation_steps = ga_steps
         fp16_full_eval = getattr(args, 'fp16_full_eval', False)
+        if type(fp16_full_eval) is not bool: fp16_full_eval = False
         bf16_full_eval = getattr(args, 'bf16_full_eval', False)
+        if type(bf16_full_eval) is not bool: bf16_full_eval = False
         if args.fp16 and bf16_full_eval: args.bf16_full_eval = False; args.fp16_full_eval = True
         if args.bf16 and fp16_full_eval: args.bf16_full_eval = True; args.fp16_full_eval = False
         if force_float32:
@@ -966,8 +993,8 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
         from unsloth_zoo.vision_utils import UnslothVisionDataCollator
         if not isinstance(data_collator, UnslothVisionDataCollator):
             if isinstance(data_collator, DataCollatorForSeq2Seq) and 'labels' not in train_dataset.column_names:
-                data_collator = DataCollatorForLanguageModeling(__tokenizer, mlm = False)
-            elif isinstance(data_collator, DataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
+                data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer, mlm = False, mlm_probability = 0.0)
+            elif isinstance(data_collator, TransformersDataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
                 data_collator = DataCollatorForSeq2Seq(__tokenizer)
         else:
             if hasattr(args, 'remove_unused_columns'): args.remove_unused_columns = False
@@ -978,7 +1005,7 @@ class UnslothXPOTrainer(_UnslothXPOTrainer):
                 if isinstance(data_collator, DataCollatorForSeq2Seq):
                     data_collator = DataCollatorForSeq2Seq(__tokenizer.tokenizer)
                 else:
-                    data_collator = DataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False)
+                    data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False, mlm_probability = 0.0)
         other_metrics = []
         
         from unsloth_zoo.logging_utils import PatchRLStatistics

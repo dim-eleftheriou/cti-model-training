@@ -4,9 +4,13 @@ import datasets
 
 class SplittedJsonIoDataset:
 
-    def __init__(self, tokenizer, system_message):
+    def __init__(self, tokenizer, config):
         self.tokenizer = tokenizer
-        self.system_message = system_message
+        self.system_message = config["system_message"]
+        self.io_dataset_path = config["io_dataset_path"]
+        self.train_path = os.path.join(config["io_dataset_path"], "train")
+        self.eval_path = os.path.join(config["io_dataset_path"], "validation")
+
 
     @staticmethod
     def load_single_example(path:str, filename:str):
@@ -22,8 +26,8 @@ class SplittedJsonIoDataset:
         return formatted_example
     
     def load_raw_data(self) -> tuple[list[str], list[str]]:   
-        raw_train_list = [self.load_single_example("data/train", filename) for filename in os.listdir("data/train")]
-        raw_eval_list = [self.load_single_example("data/eval", filename) for filename in os.listdir("data/eval")]
+        raw_train_list = [self.load_single_example(self.train_path, filename) for filename in os.listdir(self.train_path)]
+        raw_eval_list = [self.load_single_example(self.eval_path, filename) for filename in os.listdir(self.eval_path)]
         return raw_train_list, raw_eval_list
 
     def create(self):

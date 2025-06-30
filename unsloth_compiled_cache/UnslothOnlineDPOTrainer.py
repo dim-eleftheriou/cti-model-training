@@ -1,15 +1,15 @@
 """
-2025.3.13
-2025.3.15
-4.49.0
-0.15.2
+2025.6.6
+2025.6.8
+4.53.0
+0.19.0
 __UNSLOTH_VERSIONING__
 """
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from trl.trainer.online_dpo_trainer import (Any, BaseImageProcessor, BasePairwiseJudge, Callable, DPODataCollatorWithPadding, DataCollator, DataLoader, Dataset, EvalPrediction, F, FeatureExtractionMixin, GenerationConfig, IterableDataset, OnlineDPOConfig, OnlineDPOTrainer, OptimizerNames, Optional, PREFIX_CHECKPOINT_DIR, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SIMPLE_CHAT_TEMPLATE, Trainer, TrainerCallback, Union, apply_chat_template, create_reference_model, datasets, disable_dropout_in_model, empty_cache, generate_model_card, get_comet_experiment_url, get_reward, is_conversational, is_peft_available, is_wandb_available, jinja2, logging, maybe_apply_chat_template, nn, np, os, prepare_deepspeed, seed_worker, textwrap, torch, transformers, truncate_right, unwrap_model_for_generation, version, warnings, wraps, F, is_conversational, os, torch)
+from trl.trainer.online_dpo_trainer import (Any, BaseImageProcessor, BasePairwiseJudge, Callable, DPODataCollatorWithPadding, DataCollator, DataLoader, Dataset, EvalPrediction, F, FeatureExtractionMixin, GenerationConfig, IterableDataset, OnlineDPOConfig, OnlineDPOTrainer, OptimizerNames, Optional, Path, PeftModel, PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin, SIMPLE_CHAT_TEMPLATE, Trainer, TrainerCallback, Union, apply_chat_template, create_reference_model, datasets, disable_dropout_in_model, empty_cache, generate_model_card, get_comet_experiment_url, get_reward, is_conversational, is_peft_available, is_wandb_available, jinja2, logging, maybe_apply_chat_template, nn, os, prepare_deepspeed, seed_worker, textwrap, torch, truncate_right, unwrap_model_for_generation, version, warnings, wraps, F, is_conversational, os, torch, F, Optional, PeftModel, PreTrainedModel, Trainer, is_peft_available, os, torch)
 
 
 import os
@@ -20,7 +20,7 @@ import torch
 import numpy as np
 from contextlib import nullcontext
 from torch.nn import functional as F
-from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling
+from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling as TransformersDataCollatorForLanguageModeling
 
 torch_compile_options = {
     "epilogue_fusion"   : True,
@@ -50,14 +50,15 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
     
     Configuration class for the [`OnlineDPOTrainer`].
 
+    This class includes only the parameters that are specific to Online DPO training. For a full list of training
+    arguments, please refer to the [`~transformers.TrainingArguments`] documentation. Note that default values in this
+    class may differ from those in [`~transformers.TrainingArguments`].
+
     Using [`~transformers.HfArgumentParser`] we can turn this class into
     [argparse](https://docs.python.org/3/library/argparse#module-argparse) arguments that can be specified on the
     command line.
 
     Parameters:
-        learning_rate (`float`, *optional*, defaults to `5e-7`):
-            Initial learning rate for [`AdamW`] optimizer. The default value replaces that of
-            [`~transformers.TrainingArguments`].
         reward_model_path (`str` or `None`, *optional*, defaults to `None`):
             Path to the reward model. Either `judge` or `reward_model_path` must be set, but not both.
         judge (`str` or `None`, *optional*, defaults to `None`):
@@ -71,8 +72,8 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
         temperature (`float`, *optional*, defaults to `0.9`):
             Temperature for sampling. The higher the temperature, the more random the completions.
         missing_eos_penalty (`float` or `None`, *optional*, defaults to `None`):
-            Penalty applied to the score when the model fails to generate an EOS token. This is useful to encourage
-            to generate completions shorter than the maximum length (`max_new_tokens`). The penalty must be a positive
+            Penalty applied to the score when the model fails to generate an EOS token. This is useful to encourage to
+            generate completions shorter than the maximum length (`max_new_tokens`). The penalty must be a positive
             value.
         beta (`float` or `list[float]`, *optional*, defaults to `0.1`):
             Parameter controlling the deviation from the reference model. Higher β means less deviation from the
@@ -91,6 +92,8 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
             Whether to disable dropout in the model and reference model.
         use_vllm (`bool`, *optional*, defaults to `False`):
             Whether to use vLLM for generating completions. Requires vLLM to be installed (`pip install vllm`).
+        gpu_memory_utilization (`float`, *optional*, defaults to `0.55`):
+            The vLLM memory utilization. The default value is 0.55.
         ds3_gather_for_generation (`bool`, *optional*, defaults to `True`):
             This setting applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation,
             improving generation speed. However, disabling this option allows training models that exceed the VRAM
@@ -207,12 +210,12 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
         hub_token = None,
         hub_private_repo = None,
         hub_always_push = False,
+        hub_revision = None,
         gradient_checkpointing = False,
         gradient_checkpointing_kwargs = None,
         include_inputs_for_metrics = False,
         eval_do_concat_batches = True,
         fp16_backend = 'auto',
-        evaluation_strategy = None,
         push_to_hub_model_id = None,
         push_to_hub_organization = None,
         push_to_hub_token = None,
@@ -225,8 +228,6 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
         torch_compile = False,
         torch_compile_backend = None,
         torch_compile_mode = None,
-        dispatch_batches = None,
-        split_batches = None,
         include_tokens_per_second = False,
         include_num_input_tokens_seen = False,
         neftune_noise_alpha = None,
@@ -234,6 +235,7 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
         batch_eval_metrics = False,
         eval_on_start = False,
         use_liger_kernel = False,
+        liger_kernel_config = None,
         eval_use_gather_object = False,
         average_tokens_across_devices = False,
         reward_model_path = None,
@@ -246,6 +248,7 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
         dataset_num_proc = None,
         disable_dropout = True,
         use_vllm = False,
+        gpu_memory_utilization = 0.55,
         ds3_gather_for_generation = True,
         vllm_sampling_params = None,
         unsloth_num_chunks = -1,
@@ -259,6 +262,11 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
         if dataset_num_proc is None:
             from multiprocessing import cpu_count
             dataset_num_proc = cpu_count()
+        if temperature <= 0:
+            raise MathError('Unsloth: Please set a positive non-zero temperature since your results will be wrong.')
+        elif temperature >= 10:
+            raise MathError('Unsloth: Please set a positive non-zero temperature less than 10, since sampling will be quite erratic.')
+        
         
         super().__init__(
             output_dir = output_dir,
@@ -361,12 +369,12 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
             hub_token = hub_token,
             hub_private_repo = hub_private_repo,
             hub_always_push = hub_always_push,
+            hub_revision = hub_revision,
             gradient_checkpointing = gradient_checkpointing,
             gradient_checkpointing_kwargs = gradient_checkpointing_kwargs,
             include_inputs_for_metrics = include_inputs_for_metrics,
             eval_do_concat_batches = eval_do_concat_batches,
             fp16_backend = fp16_backend,
-            evaluation_strategy = evaluation_strategy,
             push_to_hub_model_id = push_to_hub_model_id,
             push_to_hub_organization = push_to_hub_organization,
             push_to_hub_token = push_to_hub_token,
@@ -379,8 +387,6 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
             torch_compile = torch_compile,
             torch_compile_backend = torch_compile_backend,
             torch_compile_mode = torch_compile_mode,
-            dispatch_batches = dispatch_batches,
-            split_batches = split_batches,
             include_tokens_per_second = include_tokens_per_second,
             include_num_input_tokens_seen = include_num_input_tokens_seen,
             neftune_noise_alpha = neftune_noise_alpha,
@@ -388,6 +394,7 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
             batch_eval_metrics = batch_eval_metrics,
             eval_on_start = eval_on_start,
             use_liger_kernel = use_liger_kernel,
+            liger_kernel_config = liger_kernel_config,
             eval_use_gather_object = eval_use_gather_object,
             average_tokens_across_devices = average_tokens_across_devices,
             reward_model_path = reward_model_path,
@@ -400,6 +407,7 @@ class UnslothOnlineDPOConfig(OnlineDPOConfig):
             dataset_num_proc = dataset_num_proc,
             disable_dropout = disable_dropout,
             use_vllm = use_vllm,
+            gpu_memory_utilization = gpu_memory_utilization,
             ds3_gather_for_generation = ds3_gather_for_generation,**kwargs)
         self.vllm_sampling_params = vllm_sampling_params
         self.unsloth_num_chunks = unsloth_num_chunks
@@ -431,7 +439,9 @@ class _UnslothOnlineDPOTrainer(Trainer):
         preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
     ) -> None:
 
-        if hasattr(model, 'vllm_engine') and hasattr(args, 'use_vllm') and (getattr(args, 'use_vllm', False) == False): args.use_vllm = True
+        if hasattr(model, 'vllm_engine') and hasattr(args, 'use_vllm'):
+            if (getattr(args, 'use_vllm', False) == False):
+                args.use_vllm = True
         if ref_model is model:
             raise ValueError(
                 "`model` and `ref_model` cannot be the same object. If you want `ref_model` to be the "
@@ -453,6 +463,7 @@ class _UnslothOnlineDPOTrainer(Trainer):
         self.reward_model = reward_model
         self.reward_processing_class = reward_processing_class
         self.judge = judge
+        self.is_encoder_decoder = model.config.is_encoder_decoder
 
         if args.missing_eos_penalty is not None and judge is not None:
             raise ValueError("`missing_eos_penalty` is not supported when `judge` is provided.")
@@ -530,11 +541,14 @@ class _UnslothOnlineDPOTrainer(Trainer):
 
         if args.use_vllm:
             self.llm = model.vllm_engine; self._last_loaded_step = 0; self.generation_config = SamplingParams(
-                n=2,                  max_tokens=args.max_new_tokens,
+                n=2,
+                max_tokens=args.max_new_tokens,
                 temperature=args.temperature,
                 top_k=50,
                 top_p=1.0,
-                detokenize=False,**getattr(getattr(args, 'vllm_sampling_params', vLLMSamplingParams()), '_set_kwargs', {}),)
+                detokenize=False,
+                **getattr(getattr(args, 'vllm_sampling_params', vLLMSamplingParams()), '_set_kwargs', {}),
+            )
         else:
             self.generation_config = GenerationConfig(
                 max_new_tokens=args.max_new_tokens,
@@ -545,7 +559,7 @@ class _UnslothOnlineDPOTrainer(Trainer):
                 use_cache=False if args.gradient_checkpointing else True,
             )
 
-        # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
+        # The trainer estimates the number of FLOPs [floating-point operations] using the number of elements in the
         # input tensor associated with the key "input_ids". However, in Online DPO, the sampled data does not include
         # the "input_ids" key. As a result, the trainer issues the warning: "Could not estimate the number of tokens
         # of the input, floating-point operations will not be computed." To suppress this warning, we set the
@@ -572,7 +586,7 @@ class _UnslothOnlineDPOTrainer(Trainer):
 
         self._beta = args.beta
 
-        # Placed after the super().__init__ because we need self.is_deepspeed_enabled and self.accelerator
+        # Placed after the super[].__init__ because we need self.is_deepspeed_enabled and self.accelerator
         if self.is_deepspeed_enabled:
             if self.reward_model is not None:
                 self.reward_model = prepare_deepspeed(
@@ -731,7 +745,7 @@ class _UnslothOnlineDPOTrainer(Trainer):
         # policies with different tokenizers / chat templates.
         inputs = [{"prompt": prompt} for prompt in prompts]
         inputs = [maybe_apply_chat_template(x, self.processing_class) for x in inputs]
-        inputs = [self.tokenize_row(x, model.config.is_encoder_decoder, self.processing_class) for x in inputs]
+        inputs = [self.tokenize_row(x, self.is_encoder_decoder, self.processing_class) for x in inputs]
         inputs = self.data_collator(inputs)
 
         # Sample 2 completions per prompt of size `max_new_tokens` from the model
@@ -939,7 +953,7 @@ class _UnslothOnlineDPOTrainer(Trainer):
 
         kwargs = {}
 
-        # For LOMO optimizers you need to explicitly use the learnign rate
+        # For LOMO optimizers you need to explicitly use the learning rate
         if self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             kwargs["learning_rate"] = self._get_learning_rate()
 
@@ -955,8 +969,9 @@ class _UnslothOnlineDPOTrainer(Trainer):
         return loss.detach() / self.args.gradient_accumulation_steps
 
     # Same as Trainer._maybe_log_save_evaluate but log our metrics
-    # start_time defaults to None to allow compatibility with transformers<=4.46
-    def _maybe_log_save_evaluate(self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time=None):
+    def _maybe_log_save_evaluate(
+        self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time, learning_rate=None
+    ):
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
             logs: dict[str, float] = {}
 
@@ -969,7 +984,10 @@ class _UnslothOnlineDPOTrainer(Trainer):
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             if grad_norm is not None:
                 logs["grad_norm"] = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
-            logs["learning_rate"] = self._get_learning_rate()
+            if learning_rate is not None:
+                logs["learning_rate"] = learning_rate
+            else:
+                logs["learning_rate"] = self._get_learning_rate()
 
             # Add our metrics
             for key, val in self.stats.items():
@@ -979,11 +997,7 @@ class _UnslothOnlineDPOTrainer(Trainer):
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
-
-            if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
-                self.log(logs, start_time)
-            else:  # transformers<=4.46
-                self.log(logs)
+            self.log(logs, start_time)
 
         metrics = None
         if self.control.should_evaluate:
@@ -997,47 +1011,14 @@ class _UnslothOnlineDPOTrainer(Trainer):
             self._save_checkpoint(model, trial)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
 
-    # Copy-pasted from transformers.Trainer to maintain compatibility with earlier versions.
-    # This can be removed once the minimum transformers version is updated to 4.47.
-    # Refer to https://github.com/huggingface/trl/pull/2288 for more details.
-    def _determine_best_metric(self, metrics, trial):
-        """
-        Determine if the model should be saved based on the evaluation metrics.
-        If args.metric_for_best_model is not set, the loss is used.
-        Returns:
-            bool: True if a new best metric was found, else False
-        """
-        is_new_best_metric = False
-
-        if self.args.metric_for_best_model is not None:
-            metric_to_check = self.args.metric_for_best_model
-
-            if not metric_to_check.startswith("eval_"):
-                metric_to_check = f"eval_{metric_to_check}"
-
-            try:
-                metric_value = metrics[metric_to_check]
-            except KeyError as exc:
-                raise KeyError(
-                    f"The `metric_for_best_model` training argument is set to '{metric_to_check}', which is not found in the evaluation metrics. "
-                    f"The available evaluation metrics are: {list(metrics.keys())}. Consider changing the `metric_for_best_model` via the TrainingArguments."
-                ) from exc
-
-            operator = np.greater if self.args.greater_is_better else np.less
-
-            if self.state.best_metric is None:
-                self.state.best_metric = float("-inf") if self.args.greater_is_better else float("inf")
-
-            if operator(metric_value, self.state.best_metric):
-                run_dir = self._get_output_dir(trial=trial)
-                checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-                output_dir = os.path.join(run_dir, checkpoint_folder)
-                self.state.best_metric = metric_value
-                self.state.best_model_checkpoint = output_dir
-
-                is_new_best_metric = True
-
-        return is_new_best_metric
+    # Ensure the model card is saved along with the checkpoint
+    def _save_checkpoint(self, model, trial):
+        if self.args.hub_model_id is None:
+            model_name = Path(self.args.output_dir).name
+        else:
+            model_name = self.args.hub_model_id.split("/")[-1]
+        self.create_model_card(model_name=model_name)
+        super()._save_checkpoint(model, trial)
 
     def create_model_card(
         self,
@@ -1064,12 +1045,18 @@ class _UnslothOnlineDPOTrainer(Trainer):
         else:
             base_model = None
 
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
+        # normalize `tags` to a mutable set
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
+            tags = {tags}
+        else:
+            tags = set(tags)
 
         if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
+            tags.add("unsloth")
+
+        tags.update(self._tag_names)
 
         citation = textwrap.dedent("""\
         @article{guo2024direct,
@@ -1102,8 +1089,8 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
         model (`transformers.PreTrainedModel` or `torch.nn.Module`):
             The model to train, preferably an `AutoModelForCausalLM`.
         ref_model (`transformers.PreTrainedModel` or `torch.nn.Module` or `None`):
-            The reference model to use for training. If None is specified, the reference model will be created from
-            the model.
+            The reference model to use for training. If None is specified, the reference model will be created from the
+            model.
         reward_model (`transformers.PreTrainedModel` or `torch.nn.Module` or `None`):
             The reward model to score completions with, preferably an `AutoModelForSequenceClassification`.
         judge (`BasePairwiseJudge`):
@@ -1111,8 +1098,9 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
         args (`OnlineDPOConfig`):
             The online DPO config arguments to use for training.
         data_collator (`transformers.DataCollator`):
-            The data collator to use for training. If None is specified, the default data collator (`DPODataCollatorWithPadding`) will be used
-            which will pad the sequences to the maximum length of the sequences in the batch, given a dataset of paired sequences.
+            The data collator to use for training. If None is specified, the default data collator
+            (`DPODataCollatorWithPadding`) will be used which will pad the sequences to the maximum length of the
+            sequences in the batch, given a dataset of paired sequences.
         train_dataset (`datasets.Dataset`):
             The dataset to use for training.
         eval_dataset (`datasets.Dataset`):
@@ -1124,8 +1112,8 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
         peft_config (`dict`):
             The peft config to use for training.
         compute_metrics (`Callable[[EvalPrediction], dict]`, *optional*):
-            The function to use to compute the metrics. Must take a `EvalPrediction` and return
-            a dictionary string to metric values.
+            The function to use to compute the metrics. Must take a `EvalPrediction` and return a dictionary string to
+            metric values.
         callbacks (`list[transformers.TrainerCallback]`):
             The callbacks to use for training.
         optimizers (`tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`):
@@ -1154,7 +1142,9 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
     ):
         if args is None: args = UnslothOnlineDPOConfig()
         use_bf16 = getattr(args, 'bf16', False)
+        if type(use_bf16) is not bool: use_bf16 = False
         use_fp16 = getattr(args, 'fp16', False)
+        if type(use_fp16) is not bool: use_fp16 = False
         force_float32 = False
         if os.environ.get('UNSLOTH_FORCE_FLOAT32', '0') == '1':
             print('Unsloth: Switching to float32 training since model cannot work with float16')
@@ -1189,7 +1179,9 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
             if eval_bsz == 8 and args.per_device_train_batch_size < eval_bsz: args.per_device_eval_batch_size = args.per_device_train_batch_size
             if getattr(args, 'eval_accumulation_steps', None) is None and ga_steps is not None: args.eval_accumulation_steps = ga_steps
         fp16_full_eval = getattr(args, 'fp16_full_eval', False)
+        if type(fp16_full_eval) is not bool: fp16_full_eval = False
         bf16_full_eval = getattr(args, 'bf16_full_eval', False)
+        if type(bf16_full_eval) is not bool: bf16_full_eval = False
         if args.fp16 and bf16_full_eval: args.bf16_full_eval = False; args.fp16_full_eval = True
         if args.bf16 and fp16_full_eval: args.bf16_full_eval = True; args.fp16_full_eval = False
         if force_float32:
@@ -1224,8 +1216,8 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
         from unsloth_zoo.vision_utils import UnslothVisionDataCollator
         if not isinstance(data_collator, UnslothVisionDataCollator):
             if isinstance(data_collator, DataCollatorForSeq2Seq) and 'labels' not in train_dataset.column_names:
-                data_collator = DataCollatorForLanguageModeling(__tokenizer, mlm = False)
-            elif isinstance(data_collator, DataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
+                data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer, mlm = False, mlm_probability = 0.0)
+            elif isinstance(data_collator, TransformersDataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
                 data_collator = DataCollatorForSeq2Seq(__tokenizer)
         else:
             if hasattr(args, 'remove_unused_columns'): args.remove_unused_columns = False
@@ -1236,7 +1228,7 @@ class UnslothOnlineDPOTrainer(_UnslothOnlineDPOTrainer):
                 if isinstance(data_collator, DataCollatorForSeq2Seq):
                     data_collator = DataCollatorForSeq2Seq(__tokenizer.tokenizer)
                 else:
-                    data_collator = DataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False)
+                    data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False, mlm_probability = 0.0)
         other_metrics = []
         
         from unsloth_zoo.logging_utils import PatchRLStatistics

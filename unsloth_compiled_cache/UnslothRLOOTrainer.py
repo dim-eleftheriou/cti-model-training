@@ -1,15 +1,15 @@
 """
-2025.3.13
-2025.3.15
-4.49.0
-0.15.2
+2025.6.6
+2025.6.8
+4.53.0
+0.19.0
 __UNSLOTH_VERSIONING__
 """
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from trl.trainer.rloo_trainer import (Accelerator, BaseImageProcessor, Callable, CallbackHandler, DEFAULT_CALLBACKS, DEFAULT_PROGRESS_CALLBACK, DataCollatorWithPadding, DataLoader, Dataset, ExportableState, FeatureExtractionMixin, GenerationConfig, INVALID_LOGPROB, OnlineTrainerState, Optional, PreTrainedTokenizerBase, PrinterCallback, ProcessorMixin, RLOOConfig, RLOOTrainer, Trainer, TrainerCallback, TrainerControl, Union, batch_generation, broadcast, defaultdict, disable_dropout_in_model, exact_div, first_true_indices, forward, gather_object, gc, generate_model_card, get_comet_experiment_url, get_reporting_integration_callbacks, get_reward, is_wandb_available, log_table_to_comet_experiment, math, nn, np, os, pd, prepare_deepspeed, print_rich_table, textwrap, time, torch, truncate_response, unwrap_model_for_generation)
+from trl.trainer.rloo_trainer import (Accelerator, BaseImageProcessor, Callable, CallbackHandler, DEFAULT_CALLBACKS, DEFAULT_PROGRESS_CALLBACK, DataCollatorWithPadding, DataLoader, Dataset, ExportableState, FeatureExtractionMixin, GenerationConfig, INVALID_LOGPROB, OnlineTrainerState, Optional, Path, PreTrainedTokenizerBase, PrinterCallback, ProcessorMixin, RLOOConfig, RLOOTrainer, Trainer, TrainerCallback, TrainerControl, Union, batch_generation, broadcast, defaultdict, disable_dropout_in_model, empty_cache, exact_div, first_true_indices, forward, gather_object, gc, generate_model_card, get_comet_experiment_url, get_reporting_integration_callbacks, get_reward, is_rich_available, is_wandb_available, log_table_to_comet_experiment, math, nn, np, os, pd, prepare_deepspeed, print_rich_table, textwrap, time, torch, truncate_response, unwrap_model_for_generation, Optional, Trainer, os, torch)
 
 
 import os
@@ -20,7 +20,7 @@ import torch
 import numpy as np
 from contextlib import nullcontext
 from torch.nn import functional as F
-from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling
+from transformers import DataCollatorForSeq2Seq, DataCollatorForLanguageModeling as TransformersDataCollatorForLanguageModeling
 
 torch_compile_options = {
     "epilogue_fusion"   : True,
@@ -44,6 +44,10 @@ class UnslothRLOOConfig(RLOOConfig):
     """
     
     Configuration class for the [`RLOOTrainer`].
+
+    This class includes only the parameters that are specific to RLOO training. For a full list of training arguments,
+    please refer to the [`~transformers.TrainingArguments`] and [`OnPolicyConfig`] documentation. Note that default
+    values in this class may differ from those in [`~transformers.TrainingArguments`].
 
     Using [`~transformers.HfArgumentParser`] we can turn this class into
     [argparse](https://docs.python.org/3/library/argparse#module-argparse) arguments that can be specified on the
@@ -188,12 +192,12 @@ class UnslothRLOOConfig(RLOOConfig):
         hub_token = None,
         hub_private_repo = None,
         hub_always_push = False,
+        hub_revision = None,
         gradient_checkpointing = False,
         gradient_checkpointing_kwargs = None,
         include_inputs_for_metrics = False,
         eval_do_concat_batches = True,
         fp16_backend = 'auto',
-        evaluation_strategy = None,
         push_to_hub_model_id = None,
         push_to_hub_organization = None,
         push_to_hub_token = None,
@@ -206,8 +210,6 @@ class UnslothRLOOConfig(RLOOConfig):
         torch_compile = False,
         torch_compile_backend = None,
         torch_compile_mode = None,
-        dispatch_batches = None,
-        split_batches = None,
         include_tokens_per_second = False,
         include_num_input_tokens_seen = False,
         neftune_noise_alpha = None,
@@ -215,6 +217,7 @@ class UnslothRLOOConfig(RLOOConfig):
         batch_eval_metrics = False,
         eval_on_start = False,
         use_liger_kernel = False,
+        liger_kernel_config = None,
         eval_use_gather_object = False,
         average_tokens_across_devices = False,
         dataset_num_proc = None,
@@ -259,6 +262,11 @@ class UnslothRLOOConfig(RLOOConfig):
         if dataset_num_proc is None:
             from multiprocessing import cpu_count
             dataset_num_proc = cpu_count()
+        if temperature <= 0:
+            raise MathError('Unsloth: Please set a positive non-zero temperature since your results will be wrong.')
+        elif temperature >= 10:
+            raise MathError('Unsloth: Please set a positive non-zero temperature less than 10, since sampling will be quite erratic.')
+        
         
         super().__init__(
             output_dir = output_dir,
@@ -361,12 +369,12 @@ class UnslothRLOOConfig(RLOOConfig):
             hub_token = hub_token,
             hub_private_repo = hub_private_repo,
             hub_always_push = hub_always_push,
+            hub_revision = hub_revision,
             gradient_checkpointing = gradient_checkpointing,
             gradient_checkpointing_kwargs = gradient_checkpointing_kwargs,
             include_inputs_for_metrics = include_inputs_for_metrics,
             eval_do_concat_batches = eval_do_concat_batches,
             fp16_backend = fp16_backend,
-            evaluation_strategy = evaluation_strategy,
             push_to_hub_model_id = push_to_hub_model_id,
             push_to_hub_organization = push_to_hub_organization,
             push_to_hub_token = push_to_hub_token,
@@ -379,8 +387,6 @@ class UnslothRLOOConfig(RLOOConfig):
             torch_compile = torch_compile,
             torch_compile_backend = torch_compile_backend,
             torch_compile_mode = torch_compile_mode,
-            dispatch_batches = dispatch_batches,
-            split_batches = split_batches,
             include_tokens_per_second = include_tokens_per_second,
             include_num_input_tokens_seen = include_num_input_tokens_seen,
             neftune_noise_alpha = neftune_noise_alpha,
@@ -388,6 +394,7 @@ class UnslothRLOOConfig(RLOOConfig):
             batch_eval_metrics = batch_eval_metrics,
             eval_on_start = eval_on_start,
             use_liger_kernel = use_liger_kernel,
+            liger_kernel_config = liger_kernel_config,
             eval_use_gather_object = eval_use_gather_object,
             average_tokens_across_devices = average_tokens_across_devices,
             dataset_num_proc = dataset_num_proc,
@@ -515,7 +522,7 @@ class _UnslothRLOOTrainer(Trainer):
         self.model = policy
         self.create_optimizer_and_scheduler(
             num_training_steps=args.num_total_batches
-        )  # note that we are calling `self.lr_scheduler.step()` manually only at the batch level
+        )  # note that we are calling `self.lr_scheduler.step[]` manually only at the batch level
 
         #########
         ### trainer specifics
@@ -561,7 +568,7 @@ class _UnslothRLOOTrainer(Trainer):
             collate_fn=self.data_collator,
             drop_last=True,  # needed; otherwise the last batch will be of ragged shape
         )
-        # sync random states for DataLoader(shuffle=True) before `accelerator.prepare`
+        # sync random states for DataLoader[shuffle=True] before `accelerator.prepare`
         # see https://gist.github.com/vwxyzjn/2581bff1e48e185e0b85b6dfe1def79c
         torch.manual_seed(args.seed)
         self.model, self.optimizer, self.dataloader = accelerator.prepare(self.model, self.optimizer, self.dataloader)
@@ -688,14 +695,14 @@ class _UnslothRLOOTrainer(Trainer):
                     logits = logitss[i : i + args.local_rollout_forward_batch_size]
                     logprob = selective_log_softmax(logits, response)
                     del logits
-                    torch.cuda.empty_cache()
+                    empty_cache()
 
                     ref_output = forward(ref_policy, query_response, processing_class.pad_token_id)
                     ref_logits = ref_output.logits[:, context_length - 1 : -1]
                     ref_logits /= args.temperature + 1e-7
                     ref_logprob = selective_log_softmax(ref_logits, response)
                     del ref_output, ref_logits
-                    torch.cuda.empty_cache()
+                    empty_cache()
 
                     # Response Processing 1. truncate response after the first occurrence of `stop_token_id`
                     postprocessed_response = response
@@ -736,7 +743,7 @@ class _UnslothRLOOTrainer(Trainer):
                 sequence_lengths = torch.cat(sequence_lengths, 0)
                 scores = torch.cat(scores, 0)
                 del (logprob, ref_logprob, score)
-                torch.cuda.empty_cache()
+                empty_cache()
                 gc.collect()
 
                 # Response Processing 3. filter response. Ensure that the sample contains stop_token_id
@@ -794,7 +801,7 @@ class _UnslothRLOOTrainer(Trainer):
                 if args.normalize_advantage:
                     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-                torch.cuda.empty_cache()
+                empty_cache()
 
             # Do multiple epochs of PPO training, with a fresh random shuffle in each epoch
             for ppo_epoch_idx in range(args.num_ppo_epochs):
@@ -870,7 +877,7 @@ class _UnslothRLOOTrainer(Trainer):
                         mb_advantage, mb_responses, mb_query_responses, mb_logprobs,
                     )
                     # fmt: on
-                    torch.cuda.empty_cache()
+                    empty_cache()
 
             # Compute metrics
             with torch.no_grad():
@@ -907,7 +914,7 @@ class _UnslothRLOOTrainer(Trainer):
             if self.control.should_save:
                 self._save_checkpoint(model, trial=None)
                 self.control = self.callback_handler.on_save(self.args, self.state, self.control)
-            torch.cuda.empty_cache()
+            empty_cache()
             gc.collect()
 
             if args.num_sample_generations > 0 and (update - 1) % self.sample_generations_freq == 0:
@@ -981,7 +988,8 @@ class _UnslothRLOOTrainer(Trainer):
         df = pd.DataFrame(table)
 
         if self.accelerator.is_main_process:
-            print_rich_table(df.iloc[0 : 0 + 5])
+            if is_rich_available():
+                print_rich_table(df.iloc[0 : 0 + 5])
             if "wandb" in args.report_to:
                 import wandb
 
@@ -993,6 +1001,15 @@ class _UnslothRLOOTrainer(Trainer):
                     name="completions.csv",
                     table=df,
                 )
+
+    # Ensure the model card is saved along with the checkpoint
+    def _save_checkpoint(self, model, trial):
+        if self.args.hub_model_id is None:
+            model_name = Path(self.args.output_dir).name
+        else:
+            model_name = self.args.hub_model_id.split("/")[-1]
+        self.create_model_card(model_name=model_name)
+        super()._save_checkpoint(model, trial)
 
     def create_model_card(
         self,
@@ -1019,12 +1036,18 @@ class _UnslothRLOOTrainer(Trainer):
         else:
             base_model = None
 
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
+        # normalize `tags` to a mutable set
+        if tags is None:
+            tags = set()
+        elif isinstance(tags, str):
+            tags = {tags}
+        else:
+            tags = set(tags)
 
         if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
+            tags.add("unsloth")
+
+        tags.update(self._tag_names)
 
         citation = textwrap.dedent("""\
         @inproceedings{ahmadian2024back,
@@ -1093,8 +1116,8 @@ class UnslothRLOOTrainer(_UnslothRLOOTrainer):
         from unsloth_zoo.vision_utils import UnslothVisionDataCollator
         if not isinstance(data_collator, UnslothVisionDataCollator):
             if isinstance(data_collator, DataCollatorForSeq2Seq) and 'labels' not in train_dataset.column_names:
-                data_collator = DataCollatorForLanguageModeling(__tokenizer, mlm = False)
-            elif isinstance(data_collator, DataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
+                data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer, mlm = False, mlm_probability = 0.0)
+            elif isinstance(data_collator, TransformersDataCollatorForLanguageModeling) and 'labels' in train_dataset.column_names:
                 data_collator = DataCollatorForSeq2Seq(__tokenizer)
         else:
             if hasattr(args, 'remove_unused_columns'): args.remove_unused_columns = False
@@ -1105,7 +1128,7 @@ class UnslothRLOOTrainer(_UnslothRLOOTrainer):
                 if isinstance(data_collator, DataCollatorForSeq2Seq):
                     data_collator = DataCollatorForSeq2Seq(__tokenizer.tokenizer)
                 else:
-                    data_collator = DataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False)
+                    data_collator = TransformersDataCollatorForLanguageModeling(__tokenizer.tokenizer, mlm = False, mlm_probability = 0.0)
         other_metrics = []
         
         from unsloth_zoo.logging_utils import PatchRLStatistics

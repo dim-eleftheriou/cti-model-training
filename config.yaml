@@ -7,6 +7,8 @@ instruction_part: "<|start_header_id|>user<|end_header_id|>"
 response_part: "<|start_header_id|>assistant<|end_header_id|>"
 # Filter dataset by number of tokens. It will be equal to max_seq_length if max_seq_length not None
 filter_dataset: False
+# Dataset Paths
+io_dataset_path: /mnt/data/openCTI/io-pairs
 
 ###################################
 # Model selection & configuration #

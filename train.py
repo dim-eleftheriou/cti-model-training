@@ -24,7 +24,7 @@ from unsloth.chat_templates import train_on_responses_only
 
 from unsloth import unsloth_train
 
-from eval_metrics import compute_metrics
+#from eval_metrics import compute_metrics
 
 from utils import save_log_history, save_model
 
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     model, tokenizer = customize_tokenizer(model, tokenizer, config)
 
     # Load dataset
-    dataset = SplittedJsonIoDataset(tokenizer, config["system_message"]).create()
+    dataset = SplittedJsonIoDataset(tokenizer, config).create()
 
     # Remove examples of dataset based on token counts
     if config["filter_dataset"]:
