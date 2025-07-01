@@ -16,7 +16,7 @@ io_dataset_path: /mnt/data/openCTI/io-pairs
 model_loading_args:
 
   # If None the default will be used! Model's max_position_embeddings argument in config file. Default for Llama3.1 is 131072
-  max_seq_length: 131072 #65536
+  max_seq_length: 65536
   # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
   dtype: 
   # Use 4bit quantization to reduce memory usage.
@@ -99,7 +99,7 @@ sft_trainer_arguments:
 ######################
 training_arguments:
 
-  per_device_train_batch_size: 8
+  per_device_train_batch_size: 1
   gradient_accumulation_steps: 16
   report_to: tensorboard
   warmup_ratio: 0.1
@@ -116,7 +116,7 @@ training_arguments:
   # Evaluation Arguments #
   ########################
   fp16_full_eval: True
-  per_device_eval_batch_size: 4
+  per_device_eval_batch_size: 1
   eval_accumulation_steps: 16
   #eval_steps: 1
   eval_strategy: "steps"
