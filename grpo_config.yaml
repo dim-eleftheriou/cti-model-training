@@ -1,0 +1,79 @@
+#############################
+# Data args & configuration #
+#############################
+system_message: |
+  You are an AI Security Analyst in Cyberthreat Intelligence (CTI). Your task is to:
+  (1) identify any of the following STIX Domain Objects (SDOs), STIX Cyber-observable Objects (SCOs)
+  and STIX Relationship Objects (SROs) in a given report and
+  (2) generate the respective STIX2.1 bundle that represents your findings.
+  It follows the list of SDOs, SCOs and SROs that you are searching for as well as the mandatory and optional details you should
+  include in the bundle for each one.
+
+  ### SROs ###
+  relationship -> id, type , relationship_type, source_ref, target_ref, description (Optional)
+
+  ### SCOs ###
+  domain-name -> id, type, value
+  hostname -> id, type, value
+  url -> id, type, value
+  email-addr -> id, type, value
+  ipv4-addr -> id, type, value
+  cryptocurrency-wallet -> id, type, value
+
+  ### SDOs ###
+  indicator -> id, type, name, description (Optional), indicator_types (Optional list), pattern, pattern_type, pattern_type (Should one of "stix", "snort", "yara")
+  file -> id, type, name (Optional), hashes (Should be json), size (Optional), mime_type (Optional)
+  attack-pattern -> id, type, name, description (Optional), aliases (Optional)
+  identity -> id, type, name, description (Optional)
+  malware -> id, type, name, description (Optional), malware_types (Optional), is_family (Optional), aliases (Optional), os_execution_envs (Optional), architecture_execution_envs (Optional), implementation_languages (Optional)
+  report -> id, type, name, description (Optional), labels:list, report_types (Optional list), created (Should be datetime), object_refs (Should be a list)
+  location -> id, type, name, description (Optional), country, description (Optional), latitude (Optional), longtitude (Optional), city (Optional)
+  vulnerability -> id, type, name, description (Optional)
+  intrusion-set -> id, type, name, description (Optional), aliases (Optional), goals (Optional), resource_level (Optional), primary_motivation (Optional), secondary_motivation (Optional)
+
+  Instead of using UUID in each id field, use the following rule for generating ids by the fields of the object:
+  File ids -> type--hashes
+  SDO ids -> type--name
+  SCO ids -> type--value
+  SRO ids -> type--source_ref--relationship_type--new_id_target_ref
+
+  Respond in the following format:
+  <reasoning>
+  (Identify all SDOs, SCOs and SROs)...
+  </reasoning>
+  <answer>
+  (Generate the STIX bundle)...
+  </answer>
+xml_cot_format: |
+  \
+  <reasoning>
+  {reasoning}
+  </reasoning>
+  <answer>
+  {answer}
+  </answer>
+chat_template: "llama-3.2"
+instruction_part: "<|start_header_id|>user<|end_header_id|>"
+response_part: "<|start_header_id|>assistant<|end_header_id|>"
+# Filter dataset by number of tokens. It will be equal to max_seq_length if max_seq_length not None
+filter_dataset: False
+# Dataset Paths
+io_dataset_path: /mnt/data/openCTI/io-pairs
+
+###################################
+# Model selection & configuration #
+###################################
+model_loading_args:
+
+  # If None the default will be used! Model's max_position_embeddings argument in config file. Default for Llama3.1 is 131072
+  max_seq_length: 65536
+  # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
+  dtype: 
+  # Use 4bit quantization to reduce memory usage.
+  load_in_4bit: True
+  # Use 8bit quantization to reduce memory usage.
+  load_in_8bit: False
+  # Do not quantize the model
+  full_finetuning: False
+  # Select model name from huggingface
+  model_name: /mnt/data/training-outputs/first-run/outputs/checkpoint-194
