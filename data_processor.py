@@ -21,7 +21,7 @@ class SplittedJsonIoDataset:
         formatted_example = [
             {"role": "assistant", "content": self.system_message},
             {"role": "user", "content": example["input"]},
-            {"role": "assistant", "content": str(example["output"])}
+            {"role": "assistant", "content": json.dumps(example["output"])}
         ]
         return formatted_example
     

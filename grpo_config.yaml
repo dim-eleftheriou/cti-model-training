@@ -38,17 +38,17 @@ system_message: |
   SRO ids -> type--source_ref--relationship_type--new_id_target_ref
 
   Respond in the following format:
-  <reasoning>
+  <think>
   (Identify all SDOs, SCOs and SROs)...
-  </reasoning>
+  </think>
   <answer>
   (Generate the STIX bundle)...
   </answer>
 xml_cot_format: |
   \
-  <reasoning>
+  <think>
   {reasoning}
-  </reasoning>
+  </think>
   <answer>
   {answer}
   </answer>
