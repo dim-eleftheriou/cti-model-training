@@ -63,7 +63,7 @@ model_loading_args:
   # Do not quantize the model. This is used for LoRA
   full_finetuning: False
   # Select model name from huggingface
-  model_name: deepseek-ai/DeepSeek-R1-0528-Qwen3-8B #unsloth/Llama-3.2-1B
+  model_name: meta-llama/Llama-3.3-70B-Instruct #deepseek-ai/DeepSeek-R1-0528-Qwen3-8B #unsloth/Llama-3.2-1B
 
 model_saving_args:
 
