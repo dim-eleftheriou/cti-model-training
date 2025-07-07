@@ -16,6 +16,17 @@ def customize_tokenizer(model, tokenizer, config):
     else:
         print(f"Tokenizer has a built-in chat template.")
 
+    # Example of chat template
+    convo = [
+    {"role": "assistant", "content": "SYSTEM MESSAGE PLACEHOLDER"},
+    {"role": "user", "content": "USER INPUT MESSAGE PLACEHOLDER"},
+    {"role": "assistant", "content": "MODEL RESPONSE MESSAGE PLACEHOLDER"}
+        ]
+    res = tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False)
+    print(f"It follows an xample of a formatted instruction using chat template. If instruction_part and \
+          response_part have been defined in config.yaml, please verify their correctness.\n \
+          CHAT TEMPLATE\n{res}")
+    
     # Set configuration for the tokenizer
     if config["fine_tuning_args"]["training_type"]=="text_completion":
         if tokenizer.pad_token is None:
