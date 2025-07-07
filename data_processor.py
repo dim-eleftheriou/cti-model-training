@@ -11,6 +11,8 @@ class SplittedJsonIoDataset:
         self.io_dataset_path = config["io_dataset_path"]
         self.train_path = os.path.join(config["io_dataset_path"], "train")
         self.eval_path = os.path.join(config["io_dataset_path"], "validation")
+        self.filter_dataset = config["filter_dataset"]
+        self.filter_threshold = config["filter_threshold"]
 
     @staticmethod
     def load_single_example(path:str, filename:str):
@@ -44,6 +46,11 @@ class SplittedJsonIoDataset:
         hf_eval = datasets.Dataset.from_list([dict(text=ex) for ex in templated_eval_list])
         # Create a hf dataset dict
         dataset = datasets.DatasetDict({"train":hf_train, "eval":hf_eval})
+        # Filter dataset
+        if self.filter_dataset:
+            if not self.filter_threshold:
+                self.filter_threshold = self.tokenizer.model_max_length
+            dataset = dataset.filter(lambda x: len(self.tokenizer.encode(x["text"])) <= self.filter_threshold)
         return dataset
 
     @staticmethod
