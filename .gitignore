@@ -5,3 +5,4 @@ data
 outputs
 _unsloth_temporary_saved_buffers
 __pycache__
+unsloth_compiled_cache
