@@ -1,16 +1,16 @@
 #########
 # Paths #
 #########
-raw_stix_bundles_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/bundles/raw # Read path
-processed_stix_bundles_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/bundles/processed # Save path
+raw_stix_bundles_path: /mnt/data/openCTI/data/bundles/raw # Read path
+processed_stix_bundles_path: /mnt/data/openCTI/data/bundles/processed # Save path
 
 ##########################
 # Training Dataset Paths #
 ##########################
-training_examples_file: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/training_examples.txt
-input_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/bundles/processed/complete_bundles
-output_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/reports/final-reports
-io_save_path: C:/Users/AIAS/Documents/cti-discovery-llm-version/LLM/data/io-pairs
+training_examples_file: /mnt/data/openCTI/data/training_examples.txt
+input_path: /mnt/data/openCTI/bundles/processed/complete_bundles
+output_path: /mnt/data/openCTI/data/reports/final-reports
+io_save_path: /mnt/data/openCTI/data/io-pairs-ids-unchanged
 
 ##################################################
 # Drop any SDO that is not needed in STIX bundle #
@@ -19,6 +19,11 @@ stix_objects_to_ignore:
   marking-definition: []
   identity:
     - [name, AlienVault]
+
+##########################################
+# Replace UUIDs with new custom made ids #
+##########################################
+replace_ids: False
 
 ####################################################
 # Split data in Domain Objects while saving.       #

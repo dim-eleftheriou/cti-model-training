@@ -43,11 +43,12 @@ def main():
     if validation_message:
         logger.info(validation_message)
     # Set new ids
-    logger.info("Assigning new IDs...")
-    filtered_bundles_w_new_ids = create_bundles_with_new_ids(filtered_bundles)
+    if config["replace_ids"]:
+        logger.info("Assigning new IDs...")
+        filtered_bundles = create_bundles_with_new_ids(filtered_bundles)
     # Save in complete and splitted forms
     logger.info("Saving processed STIX bundles...")
-    save_stix_bundles(filtered_bundles_w_new_ids, config)
+    save_stix_bundles(filtered_bundles, config)
     logger.info("Processing complete.")
 
 

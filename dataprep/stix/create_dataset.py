@@ -18,6 +18,13 @@ if __name__=="__main__":
     with open("config.yaml", "r") as file:
         config = yaml.safe_load(file)
 
+    if not os.path.exists(config["io_save_path"]):
+        os.mkdir(config["io_save_path"])
+        os.mkdir(os.path.join(config["io_save_path"], "train"))
+        os.mkdir(os.path.join(config["io_save_path"], "validation"))
+        os.mkdir(os.path.join(config["io_save_path"], "test"))
+
+
     training_examples = read_training_examples(config["training_examples_file"])
 
     bundles = read_bundles_in_path(config["input_path"])
