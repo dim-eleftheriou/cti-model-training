@@ -84,6 +84,12 @@ class SplittedJsonIoDataset:
         eval_dataset = self.grpo_format_dataset(eval_dataset)
         # Create a hf dataset dict
         dataset = datasets.DatasetDict({"train":train_dataset, "eval":eval_dataset})
+        # Filter dataset
+        if self.filter_dataset:
+            if not self.filter_threshold:
+                self.filter_threshold = self.tokenizer.model_max_length
+            dataset = dataset.filter(lambda x: len(self.tokenizer.encode(x["prompt"][-1]['content'])) <= self.filter_threshold and \
+                                     len(self.tokenizer.encode(str(x["answers"]))) <= self.filter_threshold)
         return dataset
 
 def filter_by_token_counts(dataset, tokenizer, config):
