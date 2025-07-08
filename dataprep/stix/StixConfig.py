@@ -1,11 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, Annotated, Literal, Any
-
-class STIX(BaseModel):
-    id: str
-    type: str
-    objects: list[dict]
+from typing import Optional, Annotated, Literal, Any, Union, List
 
 class SDO(BaseModel):
     id: str
@@ -24,6 +19,11 @@ class SRO(BaseModel):
     source_ref: str
     target_ref: str
     description: Optional[str] = None
+
+class STIX(BaseModel):
+    id: str
+    type: str
+    objects: List[Union[SDO, SCO, SRO]]
 
 class Relationship(SRO):
     pass
@@ -102,6 +102,14 @@ class IntrusionSet(SDO):
     resource_level: Optional[Any] = None
     primary_motivation: Optional[Any] = None
     secondary_motivation: Optional[Any] = None
+
+class CustomSTIX(BaseModel):
+    id: str
+    type: str
+    objects: List[Union[Relationship, DomainName, Hostname, URL, 
+                        EmailAddress, Ipv4Address, CryptocurrencyWallet, 
+                        Indicator, File, AttackPattern, Identity, Malware, 
+                        Report, Location, Vulnerability, IntrusionSet]]
 
 class StixToPydanticMap:
     def __init__(self):
