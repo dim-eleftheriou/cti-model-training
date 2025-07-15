@@ -105,6 +105,11 @@ sft_trainer_arguments:
   # Apply packing to dataset for fixed length. Creates a ConstantLengthDataset. Can decrease significantly the training time.
   apply_packing: False # To be used only for continued pre-training, otherwise may affect a lot the accuracy of the model.
 
+####################
+# Stoping Criteria #
+####################
+early_stopping_patience: False
+
 ######################
 # Training Arguments #
 ######################
@@ -114,7 +119,7 @@ training_arguments:
   gradient_accumulation_steps: 16
   report_to: tensorboard
   warmup_ratio: 0.1
-  num_train_epochs: 2
+  num_train_epochs: 5
   learning_rate: 0.00005
   embedding_learning_rate: 0.000005
   logging_steps: 1
@@ -137,7 +142,7 @@ training_arguments:
   ####################
   #logging_dir: "logs"
   logging_strategy: "steps"
-  output_dir: "Llama-3.1-8B-Instruct-Not-Quantized"
+  output_dir: "Llama-3.1-8B-Instruct-CTI-FP16"
   save_strategy: "best"
   metric_for_best_model: "loss"
   #load_best_model_at_end: True
