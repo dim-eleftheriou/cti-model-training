@@ -31,7 +31,7 @@ model_loading_args:
   # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
   dtype: 
   # Use 4bit quantization to reduce memory usage.
-  load_in_4bit: False
+  load_in_4bit: True
   # Use 8bit quantization to reduce memory usage.
   load_in_8bit: False
   # Do not quantize the model. This is used for LoRA
@@ -93,6 +93,7 @@ lora_parameters:
     - up_proj
     - down_proj
     - lm_head
+    - embed_tokens
 
 ########################
 # SFTTrainer arguments #
@@ -147,3 +148,4 @@ training_arguments:
   metric_for_best_model: "loss"
   #load_best_model_at_end: True
   save_total_limit: 1
+  load_best_model_at_end: True
