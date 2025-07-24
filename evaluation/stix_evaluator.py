@@ -81,8 +81,7 @@ class STIXEvaluator:
             "true_positives":0,
             "false_positives":0,
             "false_negatives":0,
-            "weight":0,
-            "agg_weight":1
+            "weight":0
             }
 
     def select_comparison_values(self, stix_bundle:dict) -> list:
@@ -179,7 +178,6 @@ class STIXEvaluator:
             if res[k]["pred_count"]==res[k]["actual_count"]==0:
                 res[k]["precision"], res[k]["recall"], res[k]["f1"] = 1, 1, 1
                 res[k]["weight"] = 1
-                res[k]["agg_weight"] = 1 / len(self.cti_object_types) # To be fixed
                 total_objects_length += 1
             else:
                 res[k]["precision"] = res[k]["true_positives"] / (res[k]["true_positives"] + res[k]["false_positives"] + epsilon)
@@ -197,7 +195,7 @@ class STIXEvaluator:
     @format_floats
     def evaluate(self, predicted:list, actual:list, comparison_values:list=None, cti_object_types:list=None) -> tuple:
         """
-        Calculate the accuracy of multiple predictions.
+        Calculate the accuracy of multiple predictions. Adjust for true negatives.
         Args:
             predicted (list): List of predicted stix bundles
             actual (list): List of actual stix bundles
@@ -222,6 +220,8 @@ class STIXEvaluator:
         else:
             warnings.warn("\nAll cti types will be evaluated!", STIXWarning)
 
+        epsilon = 10**-15
+
         precision, recall, f1 = 0, 0, 0
 
         full_res = {cti_type:deepcopy(self.results_template) for cti_type in self.cti_object_types}
@@ -235,9 +235,64 @@ class STIXEvaluator:
             f1 += f / total_sample
             for cti_type in full_res.keys():
                 for metric in self.results_template.keys():
-                    if metric.endswith("count") or metric.endswith("tives"):
+                    if metric.endswith("count") or metric.endswith("tives") or metric=="weight":
                         full_res[cti_type][metric] += res[cti_type][metric]
                     else:
-                        full_res[cti_type][metric] += res[cti_type]["agg_weight"] * res[cti_type][metric] / total_sample
+                        full_res[cti_type][metric] += res[cti_type][metric] / total_sample
         
+        return precision, recall, f1, full_res
+    
+    @format_floats
+    def _evaluate_(self, predicted:list, actual:list, comparison_values:list=None, cti_object_types:list=None) -> tuple:
+        """
+        Calculate the accuracy of multiple predictions. Do not adjust for true negatives!
+        Args:
+            predicted (list): List of predicted stix bundles
+            actual (list): List of actual stix bundles
+            comparison_values (list): List of attributes per object in stix bundle to use for evaluation
+            cti_object_types (list): List of object types to use for evaluation.
+        Returns:
+            precision, recall, f1, res (tuple): Average results of multiple stix bundle predictions.
+        """
+
+        if len(predicted)!=len(actual):
+            raise DifferentLenghtsError("Predicted objects have different length from the actual",
+                                        len(predicted),
+                                        len(actual))
+
+        if comparison_values is not None:
+            self.comparison_values = comparison_values
+        else:
+            warnings.warn("\nType and Name will be used to compare stix objects!", STIXWarning)
+
+        if cti_object_types is not None:
+            self.cti_object_types = cti_object_types
+        else:
+            warnings.warn("\nAll cti types will be evaluated!", STIXWarning)
+
+        epsilon = 10**-15
+
+        precision, recall, f1 = 0, 0, 0
+
+        full_res = {cti_type:deepcopy(self.results_template) for cti_type in self.cti_object_types}
+
+        for pair in zip(predicted, actual):
+            p, r, f, res = self.evaluate_single(*pair)
+            for cti_type in full_res.keys():
+                for metric in self.results_template.keys():
+                    if metric.endswith("count") or metric.endswith("tives") or metric=="weight":
+                        full_res[cti_type][metric] += res[cti_type][metric]
+        
+        for k in full_res.keys():
+            full_res[k]["precision"] = full_res[k]["true_positives"] / (full_res[k]["true_positives"] + full_res[k]["false_positives"] + epsilon)
+            full_res[k]["recall"] = full_res[k]["true_positives"] / (full_res[k]["true_positives"] + full_res[k]["false_negatives"] + epsilon)
+            full_res[k]["f1"] = 2 * full_res[k]["precision"] * full_res[k]["recall"] / (full_res[k]["precision"] + full_res[k]["recall"] + epsilon)
+
+        total_objects = sum([full_res[k]["weight"] for k in full_res.keys()])
+
+        # Weighted average calculations for multiple prediction
+        precision = sum([full_res[k]["weight"] * full_res[k]["precision"] / total_objects for k in full_res.keys()])
+        recall = sum([full_res[k]["weight"] * full_res[k]["recall"] / total_objects for k in full_res.keys()])
+        f1 = sum([full_res[k]["weight"] * full_res[k]["f1"] / total_objects for k in full_res.keys()])
+
         return precision, recall, f1, full_res
