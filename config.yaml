@@ -4,6 +4,9 @@
 system_message: |
   You are an AI Security Analyst in Cyberthreat Intelligence (CTI). 
   Your task is transform Cyberthreat intelligence reports (CTI) into STIX2.1 bundles. 
+  You must identify any of the following STIX Domain Objects (SDOs), STIX Cyber-observable Objects (SCOs)
+  and STIX Relationship Objects (SROs) in a given report and generate 
+  the respective STIX2.1 bundle that represents your findings.
   Instead of using UUID in each id field, use the following rule for generating ids by the fields of the object:
       File ids -> type--hashes
       SDO ids -> type--name
@@ -109,7 +112,7 @@ sft_trainer_arguments:
 ####################
 # Stoping Criteria #
 ####################
-early_stopping_patience: False
+early_stopping_patience: True # MUST be used with load_best_model_at_end == True
 
 ######################
 # Training Arguments #
@@ -143,7 +146,7 @@ training_arguments:
   ####################
   #logging_dir: "logs"
   logging_strategy: "steps"
-  output_dir: "Llama-3.1-8B-Instruct-CTI-FP16"
+  output_dir: "Llama-3.1-8B-Instruct-CTI-4BIT-ALL-MODULES"
   save_strategy: "best"
   metric_for_best_model: "loss"
   #load_best_model_at_end: True

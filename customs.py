@@ -9,12 +9,12 @@ def customize_tokenizer(model, tokenizer, config):
     if not hasattr(tokenizer, "chat_template"):
         if "chat_template" in config.keys():
             tokenizer = get_chat_template(tokenizer, chat_template=config["chat_template"])
-            print(f"A {config['chat_template']} is selected for a model of class {model.__class__.__name__}")
+            print(f"\nA {config['chat_template']} is selected for a model of class {model.__class__.__name__}")
         else:
             raise ChatTemplateError("""Tokenizer doesn't have a chat_template argument.
                                     It must be specified in config.yaml file""")
     else:
-        print(f"Tokenizer has a built-in chat template.")
+        print(f"\nTokenizer has a built-in chat template.")
 
     # Example of chat template
     convo = [
@@ -23,9 +23,8 @@ def customize_tokenizer(model, tokenizer, config):
     {"role": "assistant", "content": "MODEL RESPONSE MESSAGE PLACEHOLDER"}
         ]
     res = tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False)
-    print(f"It follows an xample of a formatted instruction using chat template. If instruction_part and \
-          response_part have been defined in config.yaml, please verify their correctness.\n \
-          CHAT TEMPLATE\n{res}")
+    print(f"""\nIt follows an example of a formatted instruction using chat template. If instruction_part and
+    response_part have been defined in config.yaml, please verify their correctness.\n\nCHAT TEMPLATE\n\n{res}""")
     
     # Set configuration for the tokenizer
     if config["fine_tuning_args"]["training_type"]=="text_completion":
