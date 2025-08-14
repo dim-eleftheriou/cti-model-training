@@ -112,7 +112,7 @@ sft_trainer_arguments:
 ####################
 # Stoping Criteria #
 ####################
-early_stopping_patience: True # MUST be used with load_best_model_at_end == True
+early_stopping_patience: 8 # MUST be used with load_best_model_at_end == True
 
 ######################
 # Training Arguments #
@@ -149,6 +149,5 @@ training_arguments:
   output_dir: "Llama-3.1-8B-Instruct-CTI-4BIT-ALL-MODULES"
   save_strategy: "best"
   metric_for_best_model: "loss"
-  #load_best_model_at_end: True
   save_total_limit: 1
   load_best_model_at_end: True
