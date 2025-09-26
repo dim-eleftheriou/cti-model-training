@@ -10,3 +10,6 @@ Llama-3.1-8B-Instruct-Not-Quantized
 log_history
 grpo_model_input
 Llama-3.1-8B-Instruct-CTI-4BIT-ALL-MODULES/
+Llama-3.1-8B-Domains-Expert/
+Llama-3.1-8B-Malware-Expert-alpha-2/
+Llama-3.1-8B-Malware-Expert/

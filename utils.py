@@ -2,6 +2,9 @@ import os
 import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
+import subprocess
+from transformers import TrainerCallback
+from torch.utils.tensorboard import SummaryWriter
 
 def save_log_history(trainer, return_history=False):
 
@@ -90,4 +93,35 @@ def save_model(model, tokenizer, save_args):
             tokenizer,
             quantization_method = save_args["quantization_method_gguf"],
         )
+
+class GPUMonitorCallback(TrainerCallback):
+    def on_train_begin(self, args, state, control, **kwargs):
+        # Create TensorBoard writer at training start
+        self.writer = SummaryWriter(log_dir=args.logging_dir)
+
+    def on_train_end(self, args, state, control, **kwargs):
+        # Close writer when training ends
+        self.writer.close()
+
+    def log_gpu_stats(self, state, prefix=""):
+        """Helper: query nvidia-smi and log stats with an optional prefix."""
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,utilization.gpu,memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            stdout=subprocess.PIPE, text=True
+        )
+
+        for line in result.stdout.strip().split("\n"):
+            idx, util, mem_used, mem_total = map(int, line.split(", "))
+            step = state.global_step if state.global_step is not None else 0
+            self.writer.add_scalar(f"{prefix}GPU{idx}/utilization", util, step)
+            self.writer.add_scalar(f"{prefix}GPU{idx}/memory_used_MB", mem_used, step)
+
+    def on_step_end(self, args, state, control, **kwargs):
+        # Called after each training step
+        self.log_gpu_stats(state, prefix="train/")
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        # Called during evaluation (validation phase)
+        self.log_gpu_stats(state, prefix="eval/")
 
