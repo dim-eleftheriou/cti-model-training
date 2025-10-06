@@ -123,9 +123,9 @@ training_arguments:
   gradient_accumulation_steps: 16
   report_to: tensorboard
   warmup_ratio: 0.1
-  num_train_epochs: 2
-  learning_rate: 0.00005
-  embedding_learning_rate: 0.000005
+  num_train_epochs: 3
+  learning_rate: 0.00001
+  embedding_learning_rate: 0.000001
   logging_steps: 1
   optim: "adamw_8bit"
   weight_decay: 0.01
