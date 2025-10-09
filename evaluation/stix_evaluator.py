@@ -83,7 +83,10 @@ class STIXEvaluator:
             "false_negatives":0,
             "weight":0
             }
-
+        
+    def process_comparison_values(self, value):
+        return value.lower().replace(" ", "").strip()
+    
     def select_comparison_values(self, stix_bundle:dict) -> list:
         """
         Select the correct attributes for each stix object and filters irrelevant.
@@ -97,19 +100,19 @@ class STIXEvaluator:
 
         for obj in stix_bundle["objects"]:
 
-            if obj["type"] not in self.cti_object_types:
+            if "id" in self.comparison_values:
+                    object_attributes.append((obj["type"], self.process_comparison_values(obj["id"])))
+            elif obj["type"] not in self.cti_object_types:
                 continue
             else:
-                if "id" in self.comparison_values:
-                    object_attributes.append((obj["type"], obj["id"]))
-                elif "name" in obj.keys():
-                    object_attributes.append((obj["type"], obj["name"]))
+                if "name" in obj.keys():
+                    object_attributes.append((obj["type"], self.process_comparison_values(obj["name"])))
                 elif "value" in obj.keys():
-                    object_attributes.append((obj["type"], obj["value"]))
+                    object_attributes.append((obj["type"], self.process_comparison_values(obj["value"])))
                 elif "hashes" in obj.keys():
-                    object_attributes.append((obj["type"], obj["hashes"]))
+                    object_attributes.append((obj["type"], self.process_comparison_values(obj["hashes"])))
                 elif "relationship_type" in obj.keys():
-                    object_attributes.append((obj["type"], obj["relationship_type"], obj["source_ref"], obj["target_ref"]))
+                    object_attributes.append((obj["type"], obj["relationship_type"], self.process_comparison_values(obj["source_ref"]), self.process_comparison_values(obj["target_ref"])))
                 else:
                     continue
         
@@ -126,11 +129,13 @@ class STIXEvaluator:
             predicted_objects (list), actual_objects (list): The lists of predicted and actual filtered objects in stix bundles.
         """
 
-        if "type" not in self.comparison_values:
-            raise ValueError("Type attribute can't be ommited in comparison_values.")
-        
-        if "name" not in self.comparison_values and "id" not in self.comparison_values:
-            raise ValueError("Name or ID must be selected in comparison_values.")
+        if "id" not in self.comparison_values:
+
+            if "type" not in self.comparison_values:
+                raise ValueError("Type attribute can't be ommited in comparison_values.")
+            
+            if "name" not in self.comparison_values and "id" not in self.comparison_values:
+                raise ValueError("Name or ID must be selected in comparison_values.")
         
         predicted_objects = self.select_comparison_values(predicted)
         actual_objects = self.select_comparison_values(actual)
