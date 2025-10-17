@@ -85,7 +85,10 @@ class STIXEvaluator:
             }
         
     def process_comparison_values(self, value):
-        return value.lower().replace(" ", "").strip()
+        if isinstance(value, str):
+            return value.lower().replace(" ", "").strip()
+        else:
+            return value
     
     def select_comparison_values(self, stix_bundle:dict) -> list:
         """
